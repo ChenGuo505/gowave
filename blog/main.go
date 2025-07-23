@@ -59,9 +59,10 @@ func main() {
 			return
 		}
 	})
+	engine.LoadTemplate("templates/*.html")
 	g.Get("/template", func(ctx *gowave.Context) {
-		user := &User{Name: "John Doe"}
-		err := ctx.HTMLTemplate("login.html", user, "templates/login.html", "templates/header.html")
+		user := User{Name: "John Doe"}
+		err := ctx.Template("login.html", user)
 		if err != nil {
 			log.Fatal(err)
 			return

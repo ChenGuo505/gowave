@@ -2,6 +2,8 @@ package gowave
 
 import (
 	"fmt"
+	"github.com/ChenGuo505/gowave/render"
+	"html/template"
 	"log"
 	"net/http"
 )
@@ -100,12 +102,27 @@ func (r *router) Group(prefix string) *routerGroup {
 
 type Engine struct {
 	router
+	funcMap    template.FuncMap
+	HTMLRender render.HTMLRender
 }
 
 func New() *Engine {
 	return &Engine{
 		router: router{},
 	}
+}
+
+func (e *Engine) SetFuncMap(funcMap template.FuncMap) {
+	e.funcMap = funcMap
+}
+
+func (e *Engine) SetHTMLRender(template *template.Template) {
+	e.HTMLRender = render.HTMLRender{Template: template}
+}
+
+func (e *Engine) LoadTemplate(pattern string) {
+	t := template.Must(template.New("").Funcs(e.funcMap).ParseGlob(pattern))
+	e.SetHTMLRender(t)
 }
 
 func (e *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -121,8 +138,9 @@ func (e *Engine) handleRequest(w http.ResponseWriter, req *http.Request) {
 			handler, ok := group.routes[node.routerName][req.Method]
 			if ok {
 				ctx := &Context{
-					W:   w,
-					Req: req,
+					W:      w,
+					Req:    req,
+					engine: e,
 				}
 				group.Handle(handler, ctx)
 				return
