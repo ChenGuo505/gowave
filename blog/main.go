@@ -68,5 +68,21 @@ func main() {
 			return
 		}
 	})
+	g.Get("/json", func(ctx *gowave.Context) {
+		user := User{Name: "John Doe"}
+		err := ctx.JSON(http.StatusOK, user)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+	})
+	g.Get("/xml", func(ctx *gowave.Context) {
+		user := User{Name: "John Doe"}
+		err := ctx.XML(http.StatusOK, user)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+	})
 	engine.Run()
 }
