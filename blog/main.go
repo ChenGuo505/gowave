@@ -7,6 +7,10 @@ import (
 	"net/http"
 )
 
+type User struct {
+	Name string
+}
+
 func main() {
 	engine := gowave.New()
 	g := engine.Group("api")
@@ -50,6 +54,14 @@ func main() {
 	})
 	g.Get("/html", func(ctx *gowave.Context) {
 		err := ctx.HTML(http.StatusOK, "<h1>Hello World</h1>")
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+	})
+	g.Get("/template", func(ctx *gowave.Context) {
+		user := &User{Name: "John Doe"}
+		err := ctx.HTMLTemplate("login.html", user, "templates/login.html", "templates/header.html")
 		if err != nil {
 			log.Fatal(err)
 			return
