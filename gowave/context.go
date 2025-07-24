@@ -1,9 +1,7 @@
 package gowave
 
 import (
-	"encoding/json"
-	"encoding/xml"
-	"fmt"
+	"github.com/ChenGuo505/gowave/render"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -17,10 +15,7 @@ type Context struct {
 }
 
 func (c *Context) HTML(code int, html string) error {
-	c.W.Header().Set("Content-Type", "text/html; charset=utf-8")
-	c.W.WriteHeader(code)
-	_, err := c.W.Write(StringToBytes(html))
-	return err
+	return c.Render(code, &render.HTML{Data: html, IsTemplate: false})
 }
 
 func (c *Context) HTMLTemplate(name string, data any, filenames ...string) error {
@@ -50,28 +45,28 @@ func (c *Context) HTMLTemplateGlob(name string, data any, pattern string) error 
 }
 
 func (c *Context) Template(name string, data any) error {
-	c.W.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := c.engine.HTMLRender.Template.ExecuteTemplate(c.W, name, data)
-	return err
+	return c.Render(http.StatusOK, &render.HTML{
+		Data:       data,
+		Name:       name,
+		IsTemplate: true,
+		Template:   c.engine.HTMLRender.Template,
+	})
 }
 
 func (c *Context) JSON(code int, data any) error {
-	c.W.Header().Set("Content-Type", "application/json; charset=utf-8")
-	c.W.WriteHeader(code)
-	// Assuming a JSON encoding function is available
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	_, err = c.W.Write(jsonData)
-	return err
+	return c.Render(code, &render.JSON{Data: data})
 }
 
 func (c *Context) XML(code int, data any) error {
-	c.W.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	c.W.WriteHeader(code)
-	err := xml.NewEncoder(c.W).Encode(data)
-	return err
+	return c.Render(code, &render.XML{Data: data})
+}
+
+func (c *Context) Redirect(code int, url string) error {
+	return c.Render(code, &render.Redirect{Code: code, Req: c.Req, URL: url})
+}
+
+func (c *Context) String(code int, format string, args ...any) error {
+	return c.Render(code, &render.String{Format: format, Data: args})
 }
 
 func (c *Context) File(filename string) {
@@ -95,20 +90,8 @@ func (c *Context) FileFromFS(filepath string, fs http.FileSystem) {
 	http.FileServer(fs).ServeHTTP(c.W, c.Req)
 }
 
-func (c *Context) Redirect(code int, url string) {
-	if (code < http.StatusMultipleChoices || code >= http.StatusPermanentRedirect) && code != http.StatusCreated {
-		panic(fmt.Sprintf("invalid redirect code: %d", code))
-	}
-	http.Redirect(c.W, c.Req, url, code)
-}
-
-func (c *Context) String(code int, format string, args ...any) error {
-	c.W.Header().Set("Content-Type", "text/plain; charset=utf-8")
+func (c *Context) Render(code int, render render.Render) error {
 	c.W.WriteHeader(code)
-	if len(args) > 0 {
-		_, err := fmt.Fprintf(c.W, format, args...)
-		return err
-	}
-	_, err := c.W.Write(StringToBytes(format))
-	return err
+	render.SetContentType(c.W)
+	return render.Render(c.W)
 }
