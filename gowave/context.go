@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 )
 
@@ -27,6 +28,7 @@ type Context struct {
 	formCache  url.Values
 
 	DisallowUnknownFields bool // Disallow unknown fields in JSON parsing
+	EnableJsonValidation  bool // Enable JSON validation
 }
 
 func (c *Context) initQueryCache() {
@@ -174,6 +176,10 @@ func (c *Context) ParseJson(obj any) error {
 	if c.DisallowUnknownFields {
 		decoder.DisallowUnknownFields()
 	}
+	if c.EnableJsonValidation {
+		err := validateJSON(obj, decoder)
+		return err
+	}
 	return decoder.Decode(obj)
 }
 
@@ -260,4 +266,36 @@ func (c *Context) Render(code int, render render.Render) error {
 		c.W.WriteHeader(code)
 	}
 	return err
+}
+
+func validateJSON(obj any, decoder *json.Decoder) error {
+	valueOf := reflect.ValueOf(obj)
+	if valueOf.Kind() != reflect.Ptr {
+		return errors.New("object must be a pointer")
+	}
+	elem := valueOf.Elem().Interface()
+	of := reflect.ValueOf(elem)
+
+	switch of.Kind() {
+	case reflect.Struct:
+		mapData := make(map[string]any)
+		_ = decoder.Decode(&mapData)
+		for i := 0; i < of.NumField(); i++ {
+			name := of.Type().Field(i).Tag.Get("json")
+			required := of.Type().Field(i).Tag.Get("gowave")
+			if name == "" {
+				name = of.Type().Field(i).Name
+			}
+			if _, ok := mapData[name]; !ok && required == "required" {
+				return errors.New("field " + of.Type().Field(i).Name + " is required")
+			}
+		}
+		jsonData, err := json.Marshal(mapData)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(jsonData, obj)
+	default:
+		return decoder.Decode(obj)
+	}
 }
