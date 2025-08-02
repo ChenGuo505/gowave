@@ -28,6 +28,8 @@ type Context struct {
 
 	DisallowUnknownFields bool // Disallow unknown fields in JSON parsing
 	EnableJsonValidation  bool // Enable JSON validation
+
+	StatusCode int // HTTP status code for the response
 }
 
 func (c *Context) initQueryCache() {
@@ -254,6 +256,7 @@ func (c *Context) FileFromFS(filepath string, fs http.FileSystem) {
 }
 
 func (c *Context) Render(code int, render render.Render) error {
+	c.StatusCode = code
 	render.SetContentType(c.W)
 	err := render.Render(c.W)
 	if code != http.StatusOK {

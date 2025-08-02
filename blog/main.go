@@ -15,13 +15,7 @@ type User struct {
 func main() {
 	engine := gowave.New()
 	g := engine.Group("api")
-	g.Use(func(next gowave.HandlerFunc) gowave.HandlerFunc {
-		return func(ctx *gowave.Context) {
-			log.Println("Before Handle")
-			next(ctx)
-			log.Println("After Handle")
-		}
-	})
+	g.Use(gowave.Logging)
 	g.Get("/hello", func(ctx *gowave.Context) {
 		fmt.Println("Hello Handler")
 		_, err := fmt.Fprintf(ctx.W, "Hello World")
