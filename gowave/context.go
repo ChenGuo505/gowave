@@ -278,24 +278,55 @@ func validateJSON(obj any, decoder *json.Decoder) error {
 
 	switch of.Kind() {
 	case reflect.Struct:
-		mapData := make(map[string]any)
-		_ = decoder.Decode(&mapData)
-		for i := 0; i < of.NumField(); i++ {
-			name := of.Type().Field(i).Tag.Get("json")
-			required := of.Type().Field(i).Tag.Get("gowave")
-			if name == "" {
-				name = of.Type().Field(i).Name
-			}
-			if _, ok := mapData[name]; !ok && required == "required" {
-				return errors.New("field " + of.Type().Field(i).Name + " is required")
-			}
+		return checkStruct(of, obj, decoder)
+	case reflect.Slice:
+		if of.Type().Elem().Kind() == reflect.Struct {
+			return checkSlice(of.Type().Elem(), obj, decoder)
 		}
-		jsonData, err := json.Marshal(mapData)
-		if err != nil {
-			return err
-		}
-		return json.Unmarshal(jsonData, obj)
 	default:
 		return decoder.Decode(obj)
 	}
+	return nil
+}
+
+func checkStruct(of reflect.Value, obj any, decoder *json.Decoder) error {
+	mapData := make(map[string]any)
+	_ = decoder.Decode(&mapData)
+	for i := 0; i < of.NumField(); i++ {
+		name := of.Type().Field(i).Tag.Get("json")
+		required := of.Type().Field(i).Tag.Get("gowave")
+		if name == "" {
+			name = of.Type().Field(i).Name
+		}
+		if _, ok := mapData[name]; !ok && required == "required" {
+			return errors.New("field [" + of.Type().Field(i).Name + "] is required")
+		}
+	}
+	jsonData, err := json.Marshal(mapData)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(jsonData, obj)
+}
+
+func checkSlice(of reflect.Type, data any, decoder *json.Decoder) error {
+	mapData := make([]map[string]any, 0)
+	_ = decoder.Decode(&mapData)
+	for i := 0; i < of.NumField(); i++ {
+		name := of.Field(i).Tag.Get("json")
+		required := of.Field(i).Tag.Get("gowave")
+		if name == "" {
+			name = of.Field(i).Name
+		}
+		for _, val := range mapData {
+			if _, ok := val[name]; !ok && required == "required" {
+				return errors.New("field " + of.Field(i).Name + " is required")
+			}
+		}
+	}
+	jsonData, err := json.Marshal(mapData)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(jsonData, data)
 }

@@ -8,7 +8,8 @@ import (
 )
 
 type User struct {
-	Name string
+	Name string `json:"name" gowave:"required"`
+	Age  int    `json:"age" gowave:"required"`
 }
 
 func main() {
@@ -82,6 +83,20 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 			return
+		}
+	})
+	g.Post("/json", func(ctx *gowave.Context) {
+		users := make([]User, 0)
+		ctx.DisallowUnknownFields = true
+		ctx.EnableJsonValidation = true
+		err := ctx.ParseJson(&users)
+		if err == nil {
+			err := ctx.JSON(http.StatusOK, users)
+			if err != nil {
+				return
+			}
+		} else {
+			log.Println(err)
 		}
 	})
 	engine.Run()
