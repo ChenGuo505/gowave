@@ -173,6 +173,10 @@ func (c *Context) BindJson(obj any) error {
 	return c.mustBindWith(json, obj)
 }
 
+func (c *Context) BindXml(obj any) error {
+	return c.mustBindWith(binding.XML, obj)
+}
+
 func (c *Context) HTML(code int, html string) error {
 	return c.Render(code, &render.HTML{Data: html, IsTemplate: false})
 }
