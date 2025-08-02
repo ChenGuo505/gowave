@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ChenGuo505/gowave/render"
-	"github.com/go-playground/validator/v10"
 	"html/template"
 	"io"
 	"log"
@@ -12,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"reflect"
 	"strings"
 )
 
@@ -182,7 +180,7 @@ func (c *Context) ParseJson(obj any) error {
 		return err
 	}
 	if c.EnableJsonValidation {
-		return validateJSONWithValidator(obj)
+		return Validator.ValidateStruct(obj)
 	}
 	return nil
 }
@@ -270,23 +268,4 @@ func (c *Context) Render(code int, render render.Render) error {
 		c.W.WriteHeader(code)
 	}
 	return err
-}
-
-func validateJSONWithValidator(obj any) error {
-	of := reflect.ValueOf(obj)
-	switch of.Kind() {
-	case reflect.Ptr:
-		return validateJSONWithValidator(of.Elem().Interface())
-	case reflect.Struct:
-		return validator.New().Struct(obj)
-	case reflect.Slice:
-		for i := 0; i < of.Len(); i++ {
-			if err := validateJSONWithValidator(of.Index(i).Interface()); err != nil {
-				return err
-			}
-		}
-	default:
-		return errors.New("unsupported type for JSON validation: " + of.Kind().String())
-	}
-	return nil
 }
