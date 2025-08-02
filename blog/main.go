@@ -8,8 +8,8 @@ import (
 )
 
 type User struct {
-	Name string `json:"name" gowave:"required"`
-	Age  int    `json:"age" gowave:"required"`
+	Name string `json:"name" validate:"required"`
+	Age  int    `json:"age" validate:"gte=0,lte=130"`
 }
 
 func main() {
@@ -17,9 +17,9 @@ func main() {
 	g := engine.Group("api")
 	g.Use(func(next gowave.HandlerFunc) gowave.HandlerFunc {
 		return func(ctx *gowave.Context) {
-			fmt.Println("Before Handle")
+			log.Println("Before Handle")
 			next(ctx)
-			fmt.Println("After Handle")
+			log.Println("After Handle")
 		}
 	})
 	g.Get("/hello", func(ctx *gowave.Context) {

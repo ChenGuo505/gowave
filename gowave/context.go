@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ChenGuo505/gowave/render"
+	"github.com/go-playground/validator/v10"
 	"html/template"
 	"io"
 	"log"
@@ -176,11 +177,14 @@ func (c *Context) ParseJson(obj any) error {
 	if c.DisallowUnknownFields {
 		decoder.DisallowUnknownFields()
 	}
-	if c.EnableJsonValidation {
-		err := validateJSON(obj, decoder)
+	err := decoder.Decode(obj)
+	if err != nil {
 		return err
 	}
-	return decoder.Decode(obj)
+	if c.EnableJsonValidation {
+		return validateJSONWithValidator(obj)
+	}
+	return nil
 }
 
 func (c *Context) HTML(code int, html string) error {
@@ -268,65 +272,21 @@ func (c *Context) Render(code int, render render.Render) error {
 	return err
 }
 
-func validateJSON(obj any, decoder *json.Decoder) error {
-	valueOf := reflect.ValueOf(obj)
-	if valueOf.Kind() != reflect.Ptr {
-		return errors.New("object must be a pointer")
-	}
-	elem := valueOf.Elem().Interface()
-	of := reflect.ValueOf(elem)
-
+func validateJSONWithValidator(obj any) error {
+	of := reflect.ValueOf(obj)
 	switch of.Kind() {
+	case reflect.Ptr:
+		return validateJSONWithValidator(of.Elem().Interface())
 	case reflect.Struct:
-		return checkStruct(of, obj, decoder)
+		return validator.New().Struct(obj)
 	case reflect.Slice:
-		if of.Type().Elem().Kind() == reflect.Struct {
-			return checkSlice(of.Type().Elem(), obj, decoder)
-		}
-	default:
-		return decoder.Decode(obj)
-	}
-	return nil
-}
-
-func checkStruct(of reflect.Value, obj any, decoder *json.Decoder) error {
-	mapData := make(map[string]any)
-	_ = decoder.Decode(&mapData)
-	for i := 0; i < of.NumField(); i++ {
-		name := of.Type().Field(i).Tag.Get("json")
-		required := of.Type().Field(i).Tag.Get("gowave")
-		if name == "" {
-			name = of.Type().Field(i).Name
-		}
-		if _, ok := mapData[name]; !ok && required == "required" {
-			return errors.New("field [" + of.Type().Field(i).Name + "] is required")
-		}
-	}
-	jsonData, err := json.Marshal(mapData)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(jsonData, obj)
-}
-
-func checkSlice(of reflect.Type, data any, decoder *json.Decoder) error {
-	mapData := make([]map[string]any, 0)
-	_ = decoder.Decode(&mapData)
-	for i := 0; i < of.NumField(); i++ {
-		name := of.Field(i).Tag.Get("json")
-		required := of.Field(i).Tag.Get("gowave")
-		if name == "" {
-			name = of.Field(i).Name
-		}
-		for _, val := range mapData {
-			if _, ok := val[name]; !ok && required == "required" {
-				return errors.New("field " + of.Field(i).Name + " is required")
+		for i := 0; i < of.Len(); i++ {
+			if err := validateJSONWithValidator(of.Index(i).Interface()); err != nil {
+				return err
 			}
 		}
+	default:
+		return errors.New("unsupported type for JSON validation: " + of.Kind().String())
 	}
-	jsonData, err := json.Marshal(mapData)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(jsonData, data)
+	return nil
 }
