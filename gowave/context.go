@@ -1,8 +1,8 @@
 package gowave
 
 import (
-	"encoding/json"
 	"errors"
+	"github.com/ChenGuo505/gowave/binding"
 	"github.com/ChenGuo505/gowave/render"
 	"html/template"
 	"io"
@@ -166,23 +166,11 @@ func (c *Context) getFromMap(cache map[string][]string, key string) map[string]s
 	return dict
 }
 
-func (c *Context) ParseJson(obj any) error {
-	body := c.Req.Body
-	if body == nil {
-		return errors.New("request body is nil")
-	}
-	decoder := json.NewDecoder(body)
-	if c.DisallowUnknownFields {
-		decoder.DisallowUnknownFields()
-	}
-	err := decoder.Decode(obj)
-	if err != nil {
-		return err
-	}
-	if c.EnableJsonValidation {
-		return Validator.ValidateStruct(obj)
-	}
-	return nil
+func (c *Context) BindJson(obj any) error {
+	json := binding.JSON
+	json.DisallowUnknownFields = c.DisallowUnknownFields
+	json.EnableJsonValidation = c.EnableJsonValidation
+	return c.mustBindWith(json, obj)
 }
 
 func (c *Context) HTML(code int, html string) error {
@@ -268,4 +256,16 @@ func (c *Context) Render(code int, render render.Render) error {
 		c.W.WriteHeader(code)
 	}
 	return err
+}
+
+func (c *Context) mustBindWith(j binding.Binding, obj any) error {
+	if err := c.shouldBind(j, obj); err != nil {
+		c.W.WriteHeader(http.StatusBadRequest)
+		return err
+	}
+	return nil
+}
+
+func (c *Context) shouldBind(j binding.Binding, obj any) error {
+	return j.Bind(c.Req, obj)
 }

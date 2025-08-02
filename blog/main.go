@@ -89,7 +89,7 @@ func main() {
 		users := make([]User, 0)
 		ctx.DisallowUnknownFields = true
 		ctx.EnableJsonValidation = true
-		err := ctx.ParseJson(&users)
+		err := ctx.BindJson(&users)
 		if err == nil {
 			err := ctx.JSON(http.StatusOK, users)
 			if err != nil {
