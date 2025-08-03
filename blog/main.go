@@ -80,12 +80,12 @@ func main() {
 		}
 	})
 	g.Post("/json", func(ctx *gowave.Context) {
-		users := make([]User, 0)
+		user := User{}
 		ctx.DisallowUnknownFields = true
 		ctx.EnableJsonValidation = true
-		err := ctx.BindJson(&users)
+		err := ctx.BindJson(&user)
 		if err == nil {
-			err := ctx.JSON(http.StatusOK, users)
+			err := ctx.JSON(http.StatusOK, user)
 			if err != nil {
 				return
 			}
