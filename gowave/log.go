@@ -67,7 +67,7 @@ var defaultLogFormatter = func(params *LogFormatterParams) string {
 	if params.IsColored {
 		return fmt.Sprintf("%s[gowave]%s |%s %v %s|%s %3d %s|%s %13v %s| %15s |%s %-7s %s %s %#v %s\n",
 			cyan, reset,
-			blue, params.Timestamp.Format("2006/01/02 15:04:05"), reset,
+			blue, params.Timestamp.Format("2006-01-02 15:04:05"), reset,
 			statusCodeColor, params.StatusCode, reset,
 			magenta, params.Latency, reset,
 			params.ClientIP,
@@ -76,7 +76,7 @@ var defaultLogFormatter = func(params *LogFormatterParams) string {
 		)
 	}
 	return fmt.Sprintf("[gowave] | %v | %3d | %13v | %15s | %-7s %#v\n",
-		params.Timestamp.Format("2006/01/02 15:04:05"),
+		params.Timestamp.Format("2006-01-02 15:04:05"),
 		params.StatusCode,
 		params.Latency,
 		params.ClientIP,
@@ -91,8 +91,10 @@ func LoggingWithConfig(conf LoggingConfig, next HandlerFunc) HandlerFunc {
 		formatter = defaultLogFormatter
 	}
 	out := conf.out
+	isColored := false
 	if out == nil {
 		out = DefaultWriter
+		isColored = true
 	}
 	return func(ctx *Context) {
 		start := time.Now()
@@ -116,7 +118,7 @@ func LoggingWithConfig(conf LoggingConfig, next HandlerFunc) HandlerFunc {
 			ClientIP:   clientIP,
 			Method:     method,
 			Path:       path,
-			IsColored:  true,
+			IsColored:  isColored,
 		}
 		_, err := fmt.Fprintf(out, formatter(params))
 		if err != nil {

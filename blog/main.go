@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/ChenGuo505/gowave"
+	gwlog "github.com/ChenGuo505/gowave/log"
 	"log"
 	"net/http"
 )
@@ -84,13 +85,15 @@ func main() {
 		ctx.DisallowUnknownFields = true
 		ctx.EnableJsonValidation = true
 		err := ctx.BindJson(&user)
+		logger := gwlog.DefaultLogger()
+		logger.Info("Info log")
 		if err == nil {
 			err := ctx.JSON(http.StatusOK, user)
 			if err != nil {
 				return
 			}
 		} else {
-			log.Println(err)
+			logger.Error(err)
 		}
 	})
 	engine.Run()
