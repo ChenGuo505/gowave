@@ -87,10 +87,23 @@ func main() {
 		err := ctx.BindJson(&user)
 		logger := gwlog.DefaultLogger()
 		logger.Formatter = &gwlog.JsonFormatter{}
+		logger.SetLogPath("./log")
+		logger.WithFields(gwlog.LoggerFields{
+			"name": user.Name,
+			"age":  user.Age,
+		}).Debug("Debug log")
 		logger.WithFields(gwlog.LoggerFields{
 			"name": user.Name,
 			"age":  user.Age,
 		}).Info("Info log")
+		logger.WithFields(gwlog.LoggerFields{
+			"name": user.Name,
+			"age":  user.Age,
+		}).Warn("Warn log")
+		logger.WithFields(gwlog.LoggerFields{
+			"name": user.Name,
+			"age":  user.Age,
+		}).Error("Error log")
 		if err == nil {
 			err := ctx.JSON(http.StatusOK, user)
 			if err != nil {

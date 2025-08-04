@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
+	"path"
 )
 
 const (
@@ -78,9 +78,10 @@ func (f LoggerFields) String() string {
 
 type Logger struct {
 	Level        LoggerLevel
-	Outs         []io.Writer
+	Outs         []*logWriter
 	Formatter    LoggingFormatter
 	LoggerFields LoggerFields
+	LogPath      string
 }
 
 type LoggingFormatter interface {
@@ -95,10 +96,9 @@ type LoggingOptions struct {
 	Msg any
 }
 
-type LoggerFormatter struct {
-	Level        LoggerLevel
-	IsColored    bool
-	LoggerFields LoggerFields
+type logWriter struct {
+	Level LoggerLevel
+	Out   io.Writer
 }
 
 func NewLogger() *Logger {
@@ -108,7 +108,11 @@ func NewLogger() *Logger {
 func DefaultLogger() *Logger {
 	logger := NewLogger()
 	logger.Level = LoggerLevelDebug
-	logger.Outs = []io.Writer{os.Stdout}
+	w := &logWriter{
+		Level: LoggerLevelDebug,
+		Out:   os.Stdout,
+	}
+	logger.Outs = []*logWriter{w}
 	logger.Formatter = &TextFormatter{}
 	return logger
 }
@@ -143,6 +147,34 @@ func (l *Logger) WithFields(fields LoggerFields) *Logger {
 	}
 }
 
+func (l *Logger) SetLogPath(logPath string) {
+	l.LogPath = logPath
+	l.Outs = append(l.Outs, &logWriter{
+		Level: -1,
+		Out:   FileWriter(path.Join(l.LogPath, "all.log")),
+	})
+	l.Outs = append(l.Outs, &logWriter{
+		Level: LoggerLevelDebug,
+		Out:   FileWriter(path.Join(l.LogPath, "debug.log")),
+	})
+	l.Outs = append(l.Outs, &logWriter{
+		Level: LoggerLevelInfo,
+		Out:   FileWriter(path.Join(l.LogPath, "info.log")),
+	})
+	l.Outs = append(l.Outs, &logWriter{
+		Level: LoggerLevelWarn,
+		Out:   FileWriter(path.Join(l.LogPath, "warn.log")),
+	})
+	l.Outs = append(l.Outs, &logWriter{
+		Level: LoggerLevelError,
+		Out:   FileWriter(path.Join(l.LogPath, "error.log")),
+	})
+	l.Outs = append(l.Outs, &logWriter{
+		Level: LoggerLevelFatal,
+		Out:   FileWriter(path.Join(l.LogPath, "fatal.log")),
+	})
+}
+
 func (l *Logger) print(level LoggerLevel, msg any) {
 	if l.Level > level {
 		return
@@ -157,24 +189,24 @@ func (l *Logger) print(level LoggerLevel, msg any) {
 		Msg:          msg,
 	}
 	for _, out := range l.Outs {
-		if out == os.Stdout {
+		if out.Out == os.Stdout {
 			opt.IsColored = true
+			msgStr := l.Formatter.Format(opt)
+			_, _ = fmt.Fprintln(out.Out, msgStr)
+		} else {
+			opt.IsColored = false
+			msgStr := l.Formatter.Format(opt)
+			if out.Level == -1 || out.Level == level {
+				_, _ = fmt.Fprintln(out.Out, msgStr)
+			}
 		}
-		msgStr := l.Formatter.Format(opt)
-		_, _ = fmt.Fprintln(out, msgStr)
 	}
 }
 
-func (f *LoggerFormatter) Format(msg any) string {
-	now := time.Now()
-	if f.IsColored {
-		return fmt.Sprintf("%s[gowave]%s |%s %v %s|%s %s %s| msg: %#v | fields: %v",
-			cyan, reset,
-			blue, now.Format("2006-01-02 15:04:05"), reset,
-			f.Level.Color(), f.Level.Level(), reset, msg, f.LoggerFields,
-		)
+func FileWriter(name string) io.Writer {
+	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		panic(err)
 	}
-	return fmt.Sprintf("[gowave] | %v | %s | msg: %#v | fields: %v",
-		now.Format("2006-01-02 15:04:05"),
-		f.Level.Level(), msg, f.LoggerFields)
+	return file
 }
