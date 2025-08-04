@@ -2,9 +2,13 @@ package log
 
 import (
 	"fmt"
+	"github.com/ChenGuo505/gowave/internal/gwstrings"
 	"io"
+	"log"
 	"os"
 	"path"
+	"strings"
+	"time"
 )
 
 const (
@@ -25,6 +29,8 @@ const (
 	LoggerLevelError
 	LoggerLevelFatal
 )
+
+const defaultLogFileSize = 100 << 20 // 100MB
 
 type LoggerLevel int
 
@@ -82,6 +88,7 @@ type Logger struct {
 	Formatter    LoggingFormatter
 	LoggerFields LoggerFields
 	LogPath      string
+	LogFileSize  int64 // Size in bytes, used for log rotation
 }
 
 type LoggingFormatter interface {
@@ -151,28 +158,49 @@ func (l *Logger) SetLogPath(logPath string) {
 	l.LogPath = logPath
 	l.Outs = append(l.Outs, &logWriter{
 		Level: -1,
-		Out:   FileWriter(path.Join(l.LogPath, "all.log")),
+		Out:   fileWriter(path.Join(l.LogPath, gwstrings.JoinStrings("all.", time.Now().UnixMilli(), ".log"))),
 	})
 	l.Outs = append(l.Outs, &logWriter{
 		Level: LoggerLevelDebug,
-		Out:   FileWriter(path.Join(l.LogPath, "debug.log")),
+		Out:   fileWriter(path.Join(l.LogPath, gwstrings.JoinStrings("debug.", time.Now().UnixMilli(), ".log"))),
 	})
 	l.Outs = append(l.Outs, &logWriter{
 		Level: LoggerLevelInfo,
-		Out:   FileWriter(path.Join(l.LogPath, "info.log")),
+		Out:   fileWriter(path.Join(l.LogPath, gwstrings.JoinStrings("info.", time.Now().UnixMilli(), ".log"))),
 	})
 	l.Outs = append(l.Outs, &logWriter{
 		Level: LoggerLevelWarn,
-		Out:   FileWriter(path.Join(l.LogPath, "warn.log")),
+		Out:   fileWriter(path.Join(l.LogPath, gwstrings.JoinStrings("warn.", time.Now().UnixMilli(), ".log"))),
 	})
 	l.Outs = append(l.Outs, &logWriter{
 		Level: LoggerLevelError,
-		Out:   FileWriter(path.Join(l.LogPath, "error.log")),
+		Out:   fileWriter(path.Join(l.LogPath, gwstrings.JoinStrings("error.", time.Now().UnixMilli(), ".log"))),
 	})
 	l.Outs = append(l.Outs, &logWriter{
 		Level: LoggerLevelFatal,
-		Out:   FileWriter(path.Join(l.LogPath, "fatal.log")),
+		Out:   fileWriter(path.Join(l.LogPath, gwstrings.JoinStrings("fatal.", time.Now().UnixMilli(), ".log"))),
 	})
+}
+
+func (l *Logger) CheckFileSize(w *logWriter) {
+	logFile := w.Out.(*os.File)
+	if logFile != nil {
+		stat, err := logFile.Stat()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		size := stat.Size()
+		if l.LogFileSize <= 0 {
+			l.LogFileSize = defaultLogFileSize
+		}
+		if size >= l.LogFileSize {
+			_, oldName := path.Split(stat.Name())
+			newName := gwstrings.JoinStrings(oldName[:strings.Index(oldName, ".")], ".", time.Now().UnixMilli(), ".log")
+			out := fileWriter(path.Join(l.LogPath, newName))
+			w.Out = out
+		}
+	}
 }
 
 func (l *Logger) print(level LoggerLevel, msg any) {
@@ -203,7 +231,7 @@ func (l *Logger) print(level LoggerLevel, msg any) {
 	}
 }
 
-func FileWriter(name string) io.Writer {
+func fileWriter(name string) io.Writer {
 	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		panic(err)
