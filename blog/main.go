@@ -86,7 +86,10 @@ func main() {
 		ctx.EnableJsonValidation = true
 		err := ctx.BindJson(&user)
 		logger := gwlog.DefaultLogger()
-		logger.Info("Info log")
+		logger.WithFields(gwlog.LoggerFields{
+			"name": user.Name,
+			"age":  user.Age,
+		}).Info("Info log")
 		if err == nil {
 			err := ctx.JSON(http.StatusOK, user)
 			if err != nil {

@@ -64,11 +64,35 @@ func (l LoggerLevel) Color() string {
 	}
 }
 
+func (f LoggerFields) String() string {
+	if len(f) == 0 {
+		return "{}"
+	}
+	result := "{"
+	for k, v := range f {
+		result += fmt.Sprintf("%s: %v, ", k, v)
+	}
+	result = result[:len(result)-2] + "}" // Remove the last comma and space
+	return result
+}
+
 type Logger struct {
 	Level        LoggerLevel
 	Outs         []io.Writer
-	Formatter    LoggerFormatter
+	Formatter    LoggingFormatter
 	LoggerFields LoggerFields
+}
+
+type LoggingFormatter interface {
+	Format(opt *LoggingOptions) string
+}
+
+type LoggingOptions struct {
+	Level        LoggerLevel
+	IsColored    bool
+	LoggerFields LoggerFields
+
+	Msg any
 }
 
 type LoggerFormatter struct {
@@ -85,7 +109,7 @@ func DefaultLogger() *Logger {
 	logger := NewLogger()
 	logger.Level = LoggerLevelDebug
 	logger.Outs = []io.Writer{os.Stdout}
-	logger.Formatter = LoggerFormatter{}
+	logger.Formatter = &TextFormatter{}
 	return logger
 }
 
@@ -123,13 +147,20 @@ func (l *Logger) print(level LoggerLevel, msg any) {
 	if l.Level > level {
 		return
 	}
-	l.Formatter.Level = level
-	l.Formatter.LoggerFields = l.LoggerFields
+	fields := l.LoggerFields
+	if fields == nil {
+		fields = make(LoggerFields)
+	}
+	opt := &LoggingOptions{
+		Level:        level,
+		LoggerFields: fields,
+		Msg:          msg,
+	}
 	for _, out := range l.Outs {
 		if out == os.Stdout {
-			l.Formatter.IsColored = true
+			opt.IsColored = true
 		}
-		msgStr := l.Formatter.Format(msg)
+		msgStr := l.Formatter.Format(opt)
 		_, _ = fmt.Fprintln(out, msgStr)
 	}
 }
