@@ -86,6 +86,7 @@ func main() {
 		ctx.EnableJsonValidation = true
 		err := ctx.BindJson(&user)
 		logger := gwlog.DefaultLogger()
+		logger.Formatter = &gwlog.JsonFormatter{}
 		logger.WithFields(gwlog.LoggerFields{
 			"name": user.Name,
 			"age":  user.Age,
