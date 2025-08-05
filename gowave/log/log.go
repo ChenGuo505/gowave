@@ -182,7 +182,7 @@ func (l *Logger) SetLogPath(logPath string) {
 	})
 }
 
-func (l *Logger) CheckFileSize(w *logWriter) {
+func (l *Logger) checkFileSize(w *logWriter) {
 	logFile := w.Out.(*os.File)
 	if logFile != nil {
 		stat, err := logFile.Stat()
@@ -225,6 +225,7 @@ func (l *Logger) print(level LoggerLevel, msg any) {
 			opt.IsColored = false
 			msgStr := l.Formatter.Format(opt)
 			if out.Level == -1 || out.Level == level {
+				l.checkFileSize(out)
 				_, _ = fmt.Fprintln(out.Out, msgStr)
 			}
 		}
