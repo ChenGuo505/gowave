@@ -10,9 +10,9 @@ type TextFormatter struct {
 
 func (t *TextFormatter) Format(opt *LoggingOptions) string {
 	now := time.Now()
-	msgPrompt := "| msg:"
+	msgPrompt := "| "
 	if opt.Level == LoggerLevelError {
-		msgPrompt = "\n error:"
+		msgPrompt = "\n Error:"
 	}
 	if opt.IsColored {
 		return fmt.Sprintf("%s[gowave]%s |%s %v %s|%s %s %s%s %v %s",

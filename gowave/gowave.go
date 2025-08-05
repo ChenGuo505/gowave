@@ -5,7 +5,6 @@ import (
 	gwlog "github.com/ChenGuo505/gowave/log"
 	"github.com/ChenGuo505/gowave/render"
 	"html/template"
-	"log"
 	"net/http"
 	"sync"
 )
@@ -19,6 +18,7 @@ type routerGroup struct {
 	routes      map[string]map[string]HandlerFunc
 	middlewares []MiddlewareFunc
 	trie        *Trie
+	logger      *gwlog.Logger
 }
 
 func (g *routerGroup) Use(middlewares ...MiddlewareFunc) {
@@ -41,7 +41,8 @@ func (g *routerGroup) register(path string, handler HandlerFunc, method string, 
 	}
 	_, ok = g.routes[path][method]
 	if ok {
-		log.Fatalf("duplicate handler for %s, method: %s", path, method)
+		//log.Fatalf("duplicate handler for %s, method: %s", path, method)
+		g.logger.Error(fmt.Sprintf("duplicate handler for %s, method: %s", path, method))
 	}
 	for _, middleware := range middlewares {
 		handler = middleware(handler)
@@ -98,6 +99,7 @@ func (r *router) Group(prefix string) *routerGroup {
 		prefix: prefix,
 		routes: make(map[string]map[string]HandlerFunc),
 		trie:   NewTrie(),
+		logger: r.engine.Logger,
 	}
 	routerGroup.Use(r.engine.middlewares...)
 	r.routerGroups = append(r.routerGroups, routerGroup)
@@ -153,7 +155,7 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (e *Engine) handleRequest(ctx *Context, w http.ResponseWriter, req *http.Request) {
-	log.Printf("path: %s, method: %s", req.URL.Path, req.Method)
+	e.Logger.Info(fmt.Sprintf("path: %s, method: %s", req.URL.Path, req.Method))
 	for _, group := range e.routerGroups {
 		routerName := TrimPrefix(req.URL.Path, "/"+group.prefix)
 		node := group.trie.Get(routerName)
@@ -181,9 +183,10 @@ func (e *Engine) handleRequest(ctx *Context, w http.ResponseWriter, req *http.Re
 func (e *Engine) Run() {
 	http.Handle("/", e)
 
-	log.Println("Starting server on :8080")
+	e.Logger.Info("Listening on :8080")
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
-		log.Fatal(err)
+		e.Logger.Fatal(fmt.Sprintf("Failed to start server: %v", err))
+		return
 	}
 }
