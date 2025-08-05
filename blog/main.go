@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/ChenGuo505/gowave"
-	gwlog "github.com/ChenGuo505/gowave/log"
 	"log"
 	"net/http"
 )
@@ -16,7 +15,6 @@ type User struct {
 func main() {
 	engine := gowave.New()
 	g := engine.Group("api")
-	g.Use(gowave.Logging)
 	g.Get("/hello", func(ctx *gowave.Context) {
 		fmt.Println("Hello Handler")
 		_, err := fmt.Fprintf(ctx.W, "Hello World")
@@ -81,36 +79,20 @@ func main() {
 		}
 	})
 	g.Post("/json", func(ctx *gowave.Context) {
+		var errUser *User
+		errUser.Age = 25
 		user := User{}
 		ctx.DisallowUnknownFields = true
 		ctx.EnableJsonValidation = true
 		err := ctx.BindJson(&user)
-		logger := gwlog.DefaultLogger()
-		logger.Formatter = &gwlog.JsonFormatter{}
-		logger.SetLogPath("./log")
-		logger.WithFields(gwlog.LoggerFields{
-			"name": user.Name,
-			"age":  user.Age,
-		}).Debug("Debug log")
-		logger.WithFields(gwlog.LoggerFields{
-			"name": user.Name,
-			"age":  user.Age,
-		}).Info("Info log")
-		logger.WithFields(gwlog.LoggerFields{
-			"name": user.Name,
-			"age":  user.Age,
-		}).Warn("Warn log")
-		logger.WithFields(gwlog.LoggerFields{
-			"name": user.Name,
-			"age":  user.Age,
-		}).Error("Error log")
+		ctx.Logger.Info("info msg")
 		if err == nil {
 			err := ctx.JSON(http.StatusOK, user)
 			if err != nil {
 				return
 			}
 		} else {
-			logger.Error(err)
+			ctx.Logger.Error(err)
 		}
 	})
 	engine.Run()

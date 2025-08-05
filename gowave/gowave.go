@@ -2,6 +2,7 @@ package gowave
 
 import (
 	"fmt"
+	gwlog "github.com/ChenGuo505/gowave/log"
 	"github.com/ChenGuo505/gowave/render"
 	"html/template"
 	"log"
@@ -89,6 +90,7 @@ func (g *routerGroup) Head(path string, handler HandlerFunc, middlewares ...Midd
 
 type router struct {
 	routerGroups []*routerGroup
+	engine       *Engine
 }
 
 func (r *router) Group(prefix string) *routerGroup {
@@ -97,15 +99,18 @@ func (r *router) Group(prefix string) *routerGroup {
 		routes: make(map[string]map[string]HandlerFunc),
 		trie:   NewTrie(),
 	}
+	routerGroup.Use(r.engine.middlewares...)
 	r.routerGroups = append(r.routerGroups, routerGroup)
 	return routerGroup
 }
 
 type Engine struct {
 	router
-	funcMap    template.FuncMap
-	HTMLRender render.HTMLRender
-	pool       sync.Pool
+	funcMap     template.FuncMap
+	HTMLRender  render.HTMLRender
+	pool        sync.Pool
+	Logger      *gwlog.Logger
+	middlewares []MiddlewareFunc
 }
 
 func New() *Engine {
@@ -115,6 +120,9 @@ func New() *Engine {
 	engine.pool.New = func() any {
 		return engine.allocateContext()
 	}
+	engine.Logger = gwlog.DefaultLogger()
+	engine.middlewares = []MiddlewareFunc{Logging, Recovery}
+	engine.router.engine = engine
 	return engine
 }
 
@@ -139,6 +147,7 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx := e.pool.Get().(*Context)
 	ctx.W = w
 	ctx.Req = req
+	ctx.Logger = e.Logger
 	e.handleRequest(ctx, w, req)
 	e.pool.Put(ctx)
 }

@@ -3,6 +3,7 @@ package gowave
 import (
 	"errors"
 	"github.com/ChenGuo505/gowave/binding"
+	gwlog "github.com/ChenGuo505/gowave/log"
 	"github.com/ChenGuo505/gowave/render"
 	"html/template"
 	"io"
@@ -30,6 +31,8 @@ type Context struct {
 	EnableJsonValidation  bool // Enable JSON validation
 
 	StatusCode int // HTTP status code for the response
+
+	Logger *gwlog.Logger
 }
 
 func (c *Context) initQueryCache() {
@@ -180,7 +183,7 @@ func (c *Context) BindXml(obj any) error {
 }
 
 func (c *Context) HTML(code int, html string) error {
-	return c.Render(code, &render.HTML{Data: html, IsTemplate: false})
+	return c.render(code, &render.HTML{Data: html, IsTemplate: false})
 }
 
 func (c *Context) HTMLTemplate(name string, data any, filenames ...string) error {
@@ -210,7 +213,7 @@ func (c *Context) HTMLTemplateGlob(name string, data any, pattern string) error 
 }
 
 func (c *Context) Template(name string, data any) error {
-	return c.Render(http.StatusOK, &render.HTML{
+	return c.render(http.StatusOK, &render.HTML{
 		Data:       data,
 		Name:       name,
 		IsTemplate: true,
@@ -219,19 +222,19 @@ func (c *Context) Template(name string, data any) error {
 }
 
 func (c *Context) JSON(code int, data any) error {
-	return c.Render(code, &render.JSON{Data: data})
+	return c.render(code, &render.JSON{Data: data})
 }
 
 func (c *Context) XML(code int, data any) error {
-	return c.Render(code, &render.XML{Data: data})
+	return c.render(code, &render.XML{Data: data})
 }
 
 func (c *Context) Redirect(code int, url string) error {
-	return c.Render(code, &render.Redirect{Code: code, Req: c.Req, URL: url})
+	return c.render(code, &render.Redirect{Code: code, Req: c.Req, URL: url})
 }
 
 func (c *Context) String(code int, format string, args ...any) error {
-	return c.Render(code, &render.String{Format: format, Data: args})
+	return c.render(code, &render.String{Format: format, Data: args})
 }
 
 func (c *Context) File(filename string) {
@@ -255,13 +258,15 @@ func (c *Context) FileFromFS(filepath string, fs http.FileSystem) {
 	http.FileServer(fs).ServeHTTP(c.W, c.Req)
 }
 
-func (c *Context) Render(code int, render render.Render) error {
+func (c *Context) Fail(code int, msg string) {
+	_ = c.String(code, msg)
+}
+
+func (c *Context) render(code int, render render.Render) error {
+	c.W.WriteHeader(code)
 	c.StatusCode = code
 	render.SetContentType(c.W)
 	err := render.Render(c.W)
-	if code != http.StatusOK {
-		c.W.WriteHeader(code)
-	}
 	return err
 }
 

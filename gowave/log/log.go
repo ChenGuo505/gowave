@@ -72,9 +72,9 @@ func (l LoggerLevel) Color() string {
 
 func (f LoggerFields) String() string {
 	if len(f) == 0 {
-		return "{}"
+		return ""
 	}
-	result := "{"
+	result := "| {"
 	for k, v := range f {
 		result += fmt.Sprintf("%s: %v, ", k, v)
 	}
