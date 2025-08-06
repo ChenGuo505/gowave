@@ -57,7 +57,6 @@ func (p *Pool) Submit(task func()) error {
 	}
 	w := p.getWorker()
 	w.task <- task
-	p.incRunning()
 	return nil
 }
 
@@ -85,10 +84,10 @@ func (p *Pool) Restart() {
 }
 
 func (p *Pool) getWorker() *Worker {
+	p.lock.Lock()
 	workers := p.workers
 	idx := len(workers) - 1
 	if idx >= 0 {
-		p.lock.Lock()
 		w := workers[idx]
 		workers[idx] = nil
 		p.workers = workers[:idx]
@@ -96,6 +95,7 @@ func (p *Pool) getWorker() *Worker {
 		return w
 	}
 	if p.running < p.cap {
+		p.lock.Unlock()
 		get := p.workerCache.Get()
 		var w *Worker
 		if get == nil {
@@ -109,6 +109,7 @@ func (p *Pool) getWorker() *Worker {
 		w.Run()
 		return w
 	}
+	p.lock.Unlock()
 	return p.waitWorkers()
 }
 
@@ -166,20 +167,23 @@ func (p *Pool) cleanExpiredWorkers() {
 		}
 		p.lock.Lock()
 		workers := p.workers
-		idx := -1
-		for i, w := range workers {
-			if time.Now().Sub(w.lastRun) <= p.expire {
-				break
-			}
-			idx = i
-			w.task <- nil
-			workers[i] = nil
-		}
+		idx := len(workers) - 1
 		if idx >= 0 {
-			if idx >= len(workers)-1 {
-				p.workers = workers[:0]
-			} else {
-				p.workers = workers[idx+1:]
+			n := -1
+			for i, w := range workers {
+				if time.Now().Sub(w.lastRun) <= p.expire {
+					break
+				}
+				n = i
+				w.task <- nil
+				workers[i] = nil
+			}
+			if n != -1 {
+				if n >= len(workers)-1 {
+					p.workers = workers[:0]
+				} else {
+					p.workers = workers[n+1:]
+				}
 			}
 		}
 		p.lock.Unlock()

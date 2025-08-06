@@ -12,6 +12,7 @@ type Worker struct {
 }
 
 func (w *Worker) Run() {
+	w.pool.incRunning()
 	go w.running()
 }
 
@@ -30,11 +31,9 @@ func (w *Worker) running() {
 	}()
 	for f := range w.task {
 		if f == nil {
-			w.pool.workerCache.Put(w)
 			return
 		}
 		f()
 		w.pool.putWorker(w)
-		w.pool.decRunning()
 	}
 }
