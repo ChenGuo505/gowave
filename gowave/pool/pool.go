@@ -10,13 +10,14 @@ import (
 const defaultExpire = 3
 
 type Pool struct {
-	cap     int32
-	running int32
-	workers []*Worker
-	expire  time.Duration
-	release chan sig
-	lock    sync.Mutex
-	once    sync.Once
+	cap         int32
+	running     int32
+	workers     []*Worker
+	expire      time.Duration
+	release     chan sig
+	lock        sync.Mutex
+	once        sync.Once
+	workerCache sync.Pool
 }
 
 type sig struct{}
@@ -36,6 +37,12 @@ func NewPoolWithExpire(cap int, expire int) *Pool {
 		cap:     int32(cap),
 		expire:  time.Duration(expire) * time.Second,
 		release: make(chan sig, 1),
+	}
+	p.workerCache.New = func() any {
+		return &Worker{
+			pool: p,
+			task: make(chan func(), 1),
+		}
 	}
 	go p.cleanExpiredWorkers()
 	return p
@@ -86,9 +93,15 @@ func (p *Pool) getWorker() *Worker {
 		return w
 	}
 	if p.running < p.cap {
-		w := &Worker{
-			pool: p,
-			task: make(chan func(), 1),
+		get := p.workerCache.Get()
+		var w *Worker
+		if get == nil {
+			w = &Worker{
+				pool: p,
+				task: make(chan func(), 1),
+			}
+		} else {
+			w = get.(*Worker)
 		}
 		w.Run()
 		return w
