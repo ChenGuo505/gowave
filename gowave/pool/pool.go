@@ -10,15 +10,16 @@ import (
 const defaultExpire = 3
 
 type Pool struct {
-	cap         int32
-	running     int32
-	workers     []*Worker
-	expire      time.Duration
-	release     chan sig
-	lock        sync.Mutex
-	once        sync.Once
-	cond        *sync.Cond
-	workerCache sync.Pool
+	cap          int32
+	running      int32
+	workers      []*Worker
+	expire       time.Duration
+	release      chan sig
+	lock         sync.Mutex
+	once         sync.Once
+	cond         *sync.Cond
+	workerCache  sync.Pool
+	PanicHandler func()
 }
 
 type sig struct{}
@@ -126,6 +127,20 @@ func (p *Pool) waitWorkers() *Worker {
 	idx := len(workers) - 1
 	if idx < 0 {
 		p.lock.Unlock()
+		if p.running < p.cap {
+			get := p.workerCache.Get()
+			var w *Worker
+			if get == nil {
+				w = &Worker{
+					pool: p,
+					task: make(chan func(), 1),
+				}
+			} else {
+				w = get.(*Worker)
+			}
+			w.Run()
+			return w
+		}
 		return p.waitWorkers()
 	}
 	w := workers[idx]
