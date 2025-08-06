@@ -17,6 +17,7 @@ type Pool struct {
 	release     chan sig
 	lock        sync.Mutex
 	once        sync.Once
+	cond        *sync.Cond
 	workerCache sync.Pool
 }
 
@@ -44,6 +45,7 @@ func NewPoolWithExpire(cap int, expire int) *Pool {
 			task: make(chan func(), 1),
 		}
 	}
+	p.cond = sync.NewCond(&p.lock)
 	go p.cleanExpiredWorkers()
 	return p
 }
@@ -106,26 +108,31 @@ func (p *Pool) getWorker() *Worker {
 		w.Run()
 		return w
 	}
-	for {
-		workers := p.workers
-		idx := len(workers) - 1
-		if idx < 0 {
-			continue
-		}
-		p.lock.Lock()
-		w := workers[idx]
-		workers[idx] = nil
-		p.workers = workers[:idx]
-		p.lock.Unlock()
-		return w
-	}
+	return p.waitWorkers()
 }
 
 func (p *Pool) putWorker(w *Worker) {
 	w.lastRun = time.Now()
 	p.lock.Lock()
 	p.workers = append(p.workers, w)
+	p.cond.Signal()
 	p.lock.Unlock()
+}
+
+func (p *Pool) waitWorkers() *Worker {
+	p.lock.Lock()
+	p.cond.Wait()
+	workers := p.workers
+	idx := len(workers) - 1
+	if idx < 0 {
+		p.lock.Unlock()
+		return p.waitWorkers()
+	}
+	w := workers[idx]
+	workers[idx] = nil
+	p.workers = workers[:idx]
+	p.lock.Unlock()
+	return w
 }
 
 func (p *Pool) incRunning() {
