@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 )
 
 const (
@@ -33,6 +34,9 @@ type Context struct {
 	StatusCode int // HTTP status code for the response
 
 	Logger *gwlog.Logger
+
+	Keys map[string]any // Store custom data
+	mu   sync.RWMutex
 }
 
 func (c *Context) initQueryCache() {
@@ -41,6 +45,29 @@ func (c *Context) initQueryCache() {
 	} else {
 		c.queryCache = make(url.Values)
 	}
+}
+
+func (c *Context) Set(key string, value any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Keys == nil {
+		c.Keys = make(map[string]any)
+	}
+	c.Keys[key] = value
+}
+
+func (c *Context) Get(key string) (any, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.Keys == nil {
+		return nil, false
+	}
+	value, ok := c.Keys[key]
+	return value, ok
+}
+
+func (c *Context) SetBasicAuth(username, password string) {
+	c.Req.Header.Set("Authorization", "Basic "+BasicAuth(username, password))
 }
 
 func (c *Context) GetQuery(key string) string {
