@@ -35,8 +35,9 @@ type Context struct {
 
 	Logger *gwlog.Logger
 
-	Keys map[string]any // Store custom data
-	mu   sync.RWMutex
+	Keys     map[string]any // Store custom data
+	mu       sync.RWMutex
+	sameSite http.SameSite
 }
 
 func (c *Context) initQueryCache() {
@@ -68,6 +69,26 @@ func (c *Context) Get(key string) (any, bool) {
 
 func (c *Context) SetBasicAuth(username, password string) {
 	c.Req.Header.Set("Authorization", "Basic "+BasicAuth(username, password))
+}
+
+func (c *Context) SetSameSite(sameSite http.SameSite) {
+	c.sameSite = sameSite
+}
+
+func (c *Context) SetCookie(name, value string, maxAge int, path, domain string, secure, httpOnly bool) {
+	if path == "" {
+		path = "/"
+	}
+	http.SetCookie(c.W, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		MaxAge:   maxAge,
+		Path:     path,
+		Domain:   domain,
+		SameSite: c.sameSite,
+		Secure:   secure,
+		HttpOnly: httpOnly,
+	})
 }
 
 func (c *Context) GetQuery(key string) string {
