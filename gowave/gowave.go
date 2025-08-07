@@ -180,6 +180,10 @@ func (e *Engine) handleRequest(ctx *Context, w http.ResponseWriter, req *http.Re
 	}
 }
 
+func (e *Engine) handler() http.Handler {
+	return e
+}
+
 func (e *Engine) Run() {
 	http.Handle("/", e)
 
@@ -187,6 +191,14 @@ func (e *Engine) Run() {
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		e.Logger.Fatal(fmt.Sprintf("Failed to start server: %v", err))
+		return
+	}
+}
+
+func (e *Engine) RunWithTLS(addr, certFile, keyFile string) {
+	err := http.ListenAndServeTLS(addr, certFile, keyFile, e.handler())
+	if err != nil {
+		e.Logger.Fatal(fmt.Sprintf("Failed to start server with TLS: %v", err))
 		return
 	}
 }
