@@ -2,6 +2,7 @@ package gowave
 
 import (
 	"fmt"
+	"github.com/ChenGuo505/gowave/config"
 	gwlog "github.com/ChenGuo505/gowave/log"
 	"github.com/ChenGuo505/gowave/render"
 	"html/template"
@@ -123,6 +124,10 @@ func New() *Engine {
 		return engine.allocateContext()
 	}
 	engine.Logger = gwlog.DefaultLogger()
+	logPath, ok := config.RootConfig.Log["path"].(string)
+	if ok && logPath != "" {
+		engine.Logger.SetLogPath(logPath)
+	}
 	engine.middlewares = []MiddlewareFunc{Logging, Recovery}
 	engine.router.engine = engine
 	return engine
