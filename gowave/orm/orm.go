@@ -150,7 +150,7 @@ func (s *GWSession) InsertBatch(data []any) (int64, int64, error) {
 func (s *GWSession) Update(data any) (int64, int64, error) {
 	s.setUpdateFields(data)
 	s.setValues(data)
-	sqlStr := fmt.Sprintf("update table %s set %s where %s", s.tableName, strings.Join(s.updateFields, ","), s.conditions.String())
+	sqlStr := fmt.Sprintf("update table %s set %s %s", s.tableName, strings.Join(s.updateFields, ","), s.conditions.String())
 	s.values = append(s.values, s.conditionValues...)
 	s.db.logger.Info(sqlStr)
 	statement, err := s.db.db.Prepare(sqlStr)
@@ -176,37 +176,140 @@ func (s *GWSession) Update(data any) (int64, int64, error) {
 	return lastInsertId, affectedRows, nil
 }
 
+func (s *GWSession) SelectOne(data any, fields ...string) error {
+	t := reflect.TypeOf(data)
+	if t.Kind() != reflect.Ptr {
+		return errors.New("data must be a pointer to a struct")
+	}
+	fieldsStr := "*"
+	if len(fields) > 0 {
+		fieldsStr = strings.Join(fields, ",")
+	}
+	sqlStr := fmt.Sprintf("select %s from %s where %s", fieldsStr, s.tableName, s.conditions.String())
+	s.db.logger.Info(sqlStr)
+	statement, err := s.db.db.Prepare(sqlStr)
+	if err != nil {
+		return err
+	}
+	rows, err := statement.Query(s.conditionValues...)
+	if err != nil {
+		return err
+	}
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	fieldsScan := make([]any, len(columns))
+	values := make([]any, len(columns))
+	for i := range fieldsScan {
+		fieldsScan[i] = &values[i]
+	}
+	if rows.Next() {
+		err := rows.Scan(fieldsScan...)
+		if err != nil {
+			return err
+		}
+		tElem := t.Elem()
+		vElem := reflect.ValueOf(data).Elem()
+		for i := 0; i < tElem.NumField(); i++ {
+			name := tElem.Field(i).Name
+			tag := tElem.Field(i).Tag.Get("orm")
+			if tag == "" {
+				tag = strings.ToLower(name)
+			} else {
+				if strings.Contains(tag, ",") {
+					tag = tag[:strings.Index(tag, ",")]
+				}
+			}
+			for j, column := range columns {
+				if tag == column {
+					val := values[j]
+					valOf := reflect.ValueOf(val)
+					fieldType := tElem.Field(i).Type
+					convert := reflect.ValueOf(valOf.Interface()).Convert(fieldType)
+					vElem.Field(i).Set(convert)
+				}
+			}
+		}
+	}
+	s.conditions.Reset()
+	s.conditionValues = make([]any, 0)
+	return nil
+}
+
+func (s *GWSession) Delete() (int64, int64, error) {
+	sqlStr := fmt.Sprintf("delete from %s %s", s.tableName, s.conditions.String())
+	s.db.logger.Info(sqlStr)
+	statement, err := s.db.db.Prepare(sqlStr)
+	if err != nil {
+		return -1, -1, err
+	}
+	result, err := statement.Exec(s.conditionValues...)
+	if err != nil {
+		return -1, -1, err
+	}
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return -1, -1, err
+	}
+	lastInsertId, err := result.LastInsertId()
+	if err != nil {
+		return -1, -1, err
+	}
+	s.conditions.Reset()
+	s.conditionValues = make([]any, 0)
+	return lastInsertId, affectedRows, nil
+}
+
 func (s *GWSession) Equals(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
 	s.conditions.WriteString(fmt.Sprintf("%s = ?", field))
 	s.conditionValues = append(s.conditionValues, value)
 	return s
 }
 
 func (s *GWSession) NotEquals(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
 	s.conditions.WriteString(fmt.Sprintf("%s != ?", field))
 	s.conditionValues = append(s.conditionValues, value)
 	return s
 }
 
 func (s *GWSession) GreaterThan(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
 	s.conditions.WriteString(fmt.Sprintf("%s > ?", field))
 	s.conditionValues = append(s.conditionValues, value)
 	return s
 }
 
 func (s *GWSession) LessThan(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
 	s.conditions.WriteString(fmt.Sprintf("%s < ?", field))
 	s.conditionValues = append(s.conditionValues, value)
 	return s
 }
 
 func (s *GWSession) GreaterThanOrEqual(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
 	s.conditions.WriteString(fmt.Sprintf("%s >= ?", field))
 	s.conditionValues = append(s.conditionValues, value)
 	return s
 }
 
 func (s *GWSession) LessThanOrEqual(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
 	s.conditions.WriteString(fmt.Sprintf("%s <= ?", field))
 	s.conditionValues = append(s.conditionValues, value)
 	return s
