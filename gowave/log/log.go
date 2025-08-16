@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+var (
+	GWLogger = DefaultLogger()
+)
+
 const (
 	redBg   = "\033[97;41m"
 	green   = "\033[32m"

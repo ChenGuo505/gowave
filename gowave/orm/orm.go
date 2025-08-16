@@ -5,13 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ChenGuo505/gowave/config"
+	"github.com/ChenGuo505/gowave/log"
 	"reflect"
 	"strings"
 	"time"
 )
 
 type GWDB struct {
-	db *sql.DB
+	db     *sql.DB
+	logger *log.Logger
 }
 
 type GWSession struct {
@@ -45,7 +47,7 @@ func Open() (*GWDB, error) {
 	if err = db.Ping(); err != nil {
 		panic(err)
 	}
-	return &GWDB{db: db}, nil
+	return &GWDB{db: db, logger: log.GWLogger}, nil
 }
 
 func (db *GWDB) NewSession() *GWSession {
@@ -82,6 +84,7 @@ func (s *GWSession) Table(name string) *GWSession {
 func (s *GWSession) Insert(data any) (int64, int64, error) {
 	s.setAttributes(data)
 	sqlStr := fmt.Sprintf("insert into %s (%s) values (%s)", s.tableName, strings.Join(s.fields, ","), strings.Join(s.placeHolders, ","))
+	s.db.logger.Info(sqlStr)
 	statement, err := s.db.db.Prepare(sqlStr)
 	if err != nil {
 		return -1, -1, err
@@ -121,6 +124,7 @@ func (s *GWSession) InsertBatch(data []any) (int64, int64, error) {
 		}
 	}
 	sqlStr = sb.String()
+	s.db.logger.Info(sqlStr)
 	statement, err := s.db.db.Prepare(sqlStr)
 	if err != nil {
 		return -1, -1, err
@@ -148,6 +152,7 @@ func (s *GWSession) Update(data any) (int64, int64, error) {
 	s.setValues(data)
 	sqlStr := fmt.Sprintf("update table %s set %s where %s", s.tableName, strings.Join(s.updateFields, ","), s.conditions.String())
 	s.values = append(s.values, s.conditionValues...)
+	s.db.logger.Info(sqlStr)
 	statement, err := s.db.db.Prepare(sqlStr)
 	if err != nil {
 		return -1, -1, err
