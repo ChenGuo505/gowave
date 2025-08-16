@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/ChenGuo505/gowave/config"
 	"reflect"
 	"strings"
 	"time"
@@ -21,7 +22,14 @@ type GWSession struct {
 	values       []any
 }
 
-func Open(driverName, dataSourceName string) (*GWDB, error) {
+func Open() (*GWDB, error) {
+	driverName := config.RootConfig.DataSource["driver"].(string)
+	username := config.RootConfig.DataSource["username"].(string)
+	password := config.RootConfig.DataSource["password"].(string)
+	host := config.RootConfig.DataSource["host"].(string)
+	port := config.RootConfig.DataSource["port"].(int64)
+	database := config.RootConfig.DataSource["database"].(string)
+	dataSourceName := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local", username, password, host, port, database)
 	db, err := sql.Open(driverName, dataSourceName)
 	if err != nil {
 		panic(err)
@@ -68,7 +76,7 @@ func (s *GWSession) Table(name string) *GWSession {
 }
 
 func (s *GWSession) Insert(data any) (int64, int64, error) {
-	s.setFields(data)
+	s.setAttributes(data)
 	sqlStr := fmt.Sprintf("insert into %s (%s) values (%s)", s.tableName, strings.Join(s.fields, ","), strings.Join(s.placeHolders, ","))
 	statement, err := s.db.db.Prepare(sqlStr)
 	if err != nil {
@@ -89,14 +97,66 @@ func (s *GWSession) Insert(data any) (int64, int64, error) {
 	return lastInsertId, affectedRows, nil
 }
 
-func (s *GWSession) setFields(data any) {
+func (s *GWSession) InsertBatch(data []any) (int64, int64, error) {
+	if len(data) == 0 {
+		return -1, -1, errors.New("data cannot be empty")
+	}
+	s.setAttributesBatch(data)
+	sqlStr := fmt.Sprintf("insert into %s (%s) values ", s.tableName, strings.Join(s.fields, ","))
+	var sb strings.Builder
+	sb.WriteString(sqlStr)
+	for i := range data {
+		sb.WriteString("(")
+		sb.WriteString(strings.Join(s.placeHolders, ","))
+		sb.WriteString(")")
+		if i < len(data)-1 {
+			sb.WriteString(",")
+		}
+	}
+	sqlStr = sb.String()
+	statement, err := s.db.db.Prepare(sqlStr)
+	if err != nil {
+		return -1, -1, err
+	}
+	result, err := statement.Exec(s.values...)
+	if err != nil {
+		return -1, -1, err
+	}
+	lastInsertId, err := result.LastInsertId()
+	if err != nil {
+		return -1, -1, err
+	}
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return -1, -1, err
+	}
+	return lastInsertId, affectedRows, nil
+}
+
+func (s *GWSession) setAttributes(data any) {
+	s.fields = make([]string, 0)
+	s.placeHolders = make([]string, 0)
+	s.values = make([]any, 0)
+	s.setFieldsAndPlaceHolders(data)
+	s.setValues(data)
+}
+
+func (s *GWSession) setAttributesBatch(dataArray []any) {
+	s.fields = make([]string, 0)
+	s.placeHolders = make([]string, 0)
+	s.values = make([]any, 0)
+	s.setFieldsAndPlaceHolders(dataArray[0])
+	for _, data := range dataArray {
+		s.setValues(data)
+	}
+}
+
+func (s *GWSession) setFieldsAndPlaceHolders(data any) {
 	t := reflect.TypeOf(data)
-	v := reflect.ValueOf(data)
 	if t.Kind() != reflect.Ptr {
 		panic(errors.New("data must be a pointer to a struct"))
 	}
 	tElem := t.Elem()
-	vElem := v.Elem()
 	for i := 0; i < tElem.NumField(); i++ {
 		fieldName := tElem.Field(i).Name
 		tag := tElem.Field(i).Tag.Get("orm")
@@ -112,7 +172,17 @@ func (s *GWSession) setFields(data any) {
 		}
 		s.fields = append(s.fields, tag)
 		s.placeHolders = append(s.placeHolders, "?")
-		s.values = append(s.values, vElem.Field(i).Interface())
+	}
+}
+
+func (s *GWSession) setValues(data any) {
+	t := reflect.TypeOf(data)
+	if t.Kind() != reflect.Ptr {
+		panic(errors.New("data must be a pointer to a struct"))
+	}
+	v := reflect.ValueOf(data).Elem()
+	for i := 0; i < t.Elem().NumField(); i++ {
+		s.values = append(s.values, v.Field(i).Interface())
 	}
 }
 

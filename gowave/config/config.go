@@ -10,7 +10,8 @@ import (
 var RootConfig = &GWConfig{}
 
 type GWConfig struct {
-	Log map[string]any `toml:"log"`
+	Log        map[string]any `toml:"log"`
+	DataSource map[string]any `toml:"datasource"`
 }
 
 func init() {
