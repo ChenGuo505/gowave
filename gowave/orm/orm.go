@@ -20,6 +20,10 @@ type GWSession struct {
 	fields       []string
 	placeHolders []string
 	values       []any
+	updateFields []string
+
+	conditions      strings.Builder
+	conditionValues []any
 }
 
 func Open() (*GWDB, error) {
@@ -94,6 +98,9 @@ func (s *GWSession) Insert(data any) (int64, int64, error) {
 	if err != nil {
 		return -1, -1, err
 	}
+	s.fields = make([]string, 0)
+	s.placeHolders = make([]string, 0)
+	s.values = make([]any, 0)
 	return lastInsertId, affectedRows, nil
 }
 
@@ -130,21 +137,92 @@ func (s *GWSession) InsertBatch(data []any) (int64, int64, error) {
 	if err != nil {
 		return -1, -1, err
 	}
-	return lastInsertId, affectedRows, nil
-}
-
-func (s *GWSession) setAttributes(data any) {
 	s.fields = make([]string, 0)
 	s.placeHolders = make([]string, 0)
 	s.values = make([]any, 0)
+	return lastInsertId, affectedRows, nil
+}
+
+func (s *GWSession) Update(data any) (int64, int64, error) {
+	s.setUpdateFields(data)
+	s.setValues(data)
+	sqlStr := fmt.Sprintf("update table %s set %s where %s", s.tableName, strings.Join(s.updateFields, ","), s.conditions.String())
+	s.values = append(s.values, s.conditionValues...)
+	statement, err := s.db.db.Prepare(sqlStr)
+	if err != nil {
+		return -1, -1, err
+	}
+	result, err := statement.Exec(s.values...)
+	if err != nil {
+		return -1, -1, err
+	}
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return -1, -1, err
+	}
+	lastInsertId, err := result.LastInsertId()
+	if err != nil {
+		return -1, -1, err
+	}
+	s.updateFields = make([]string, 0)
+	s.values = make([]any, 0)
+	s.conditions.Reset()
+	s.conditionValues = make([]any, 0)
+	return lastInsertId, affectedRows, nil
+}
+
+func (s *GWSession) Equals(field string, value any) *GWSession {
+	s.conditions.WriteString(fmt.Sprintf("%s = ?", field))
+	s.conditionValues = append(s.conditionValues, value)
+	return s
+}
+
+func (s *GWSession) NotEquals(field string, value any) *GWSession {
+	s.conditions.WriteString(fmt.Sprintf("%s != ?", field))
+	s.conditionValues = append(s.conditionValues, value)
+	return s
+}
+
+func (s *GWSession) GreaterThan(field string, value any) *GWSession {
+	s.conditions.WriteString(fmt.Sprintf("%s > ?", field))
+	s.conditionValues = append(s.conditionValues, value)
+	return s
+}
+
+func (s *GWSession) LessThan(field string, value any) *GWSession {
+	s.conditions.WriteString(fmt.Sprintf("%s < ?", field))
+	s.conditionValues = append(s.conditionValues, value)
+	return s
+}
+
+func (s *GWSession) GreaterThanOrEqual(field string, value any) *GWSession {
+	s.conditions.WriteString(fmt.Sprintf("%s >= ?", field))
+	s.conditionValues = append(s.conditionValues, value)
+	return s
+}
+
+func (s *GWSession) LessThanOrEqual(field string, value any) *GWSession {
+	s.conditions.WriteString(fmt.Sprintf("%s <= ?", field))
+	s.conditionValues = append(s.conditionValues, value)
+	return s
+}
+
+func (s *GWSession) And() *GWSession {
+	s.conditions.WriteString(" and ")
+	return s
+}
+
+func (s *GWSession) Or() *GWSession {
+	s.conditions.WriteString(" or ")
+	return s
+}
+
+func (s *GWSession) setAttributes(data any) {
 	s.setFieldsAndPlaceHolders(data)
 	s.setValues(data)
 }
 
 func (s *GWSession) setAttributesBatch(dataArray []any) {
-	s.fields = make([]string, 0)
-	s.placeHolders = make([]string, 0)
-	s.values = make([]any, 0)
 	s.setFieldsAndPlaceHolders(dataArray[0])
 	for _, data := range dataArray {
 		s.setValues(data)
@@ -172,6 +250,30 @@ func (s *GWSession) setFieldsAndPlaceHolders(data any) {
 		}
 		s.fields = append(s.fields, tag)
 		s.placeHolders = append(s.placeHolders, "?")
+	}
+}
+
+func (s *GWSession) setUpdateFields(data any) {
+	s.updateFields = make([]string, 0)
+	t := reflect.TypeOf(data)
+	if t.Kind() != reflect.Ptr {
+		panic(errors.New("data must be a pointer to a struct"))
+	}
+	tElem := t.Elem()
+	for i := 0; i < tElem.NumField(); i++ {
+		fieldName := tElem.Field(i).Name
+		tag := tElem.Field(i).Tag.Get("orm")
+		if tag == "" {
+			tag = strings.ToLower(fieldToColumn(fieldName))
+		} else {
+			if strings.Contains(tag, "auto_increment") {
+				continue
+			}
+			if strings.Contains(tag, ",") {
+				tag = tag[:strings.Index(tag, ",")]
+			}
+		}
+		s.updateFields = append(s.updateFields, fmt.Sprintf("%s = ?", tag))
 	}
 }
 
