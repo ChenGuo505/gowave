@@ -74,16 +74,20 @@ func (g *GWDB) Close() error {
 	return g.db.Close()
 }
 
-func NewSession(db *GWDB, tableName string) *Session {
+func (g *GWDB) NewSession() *Session {
 	return &Session{
-		db:        db,
-		tableName: tableName,
+		db:        g,
 		sqlStr:    "",
 		args:      make([]any, 0),
 		tx:        nil,
 		isTxBegin: false,
 		errStack:  make([]error, 0),
 	}
+}
+
+func (s *Session) Table(name string) *Session {
+	s.tableName = name
+	return s
 }
 
 func (s *Session) Begin() error {
