@@ -16,7 +16,7 @@ type GWDB struct {
 	logger *log.Logger
 }
 
-type Session[T any] struct {
+type Session struct {
 	db        *GWDB
 	tableName string
 
@@ -74,8 +74,8 @@ func (g *GWDB) Close() error {
 	return g.db.Close()
 }
 
-func NewSession[T any](db *GWDB, tableName string) *Session[T] {
-	return &Session[T]{
+func NewSession(db *GWDB, tableName string) *Session {
+	return &Session{
 		db:        db,
 		tableName: tableName,
 		sqlStr:    "",
@@ -86,7 +86,7 @@ func NewSession[T any](db *GWDB, tableName string) *Session[T] {
 	}
 }
 
-func (s *Session[T]) Begin() error {
+func (s *Session) Begin() error {
 	if s.isTxBegin {
 		return errors.New("transaction already started")
 	}
@@ -100,7 +100,7 @@ func (s *Session[T]) Begin() error {
 	return nil
 }
 
-func (s *Session[T]) Commit() error {
+func (s *Session) Commit() error {
 	if !s.isTxBegin {
 		return errors.New("no transaction to commit")
 	}
@@ -117,7 +117,7 @@ func (s *Session[T]) Commit() error {
 	return nil
 }
 
-func (s *Session[T]) Rollback() error {
+func (s *Session) Rollback() error {
 	if !s.isTxBegin {
 		return errors.New("no transaction to rollback")
 	}
@@ -134,7 +134,7 @@ func (s *Session[T]) Rollback() error {
 	return nil
 }
 
-func (s *Session[T]) Exec() (int64, int64, error) {
+func (s *Session) Exec() (int64, int64, error) {
 	if len(s.errStack) > 0 {
 		return -1, -1, errors.New(fmt.Sprintf("session has errors: %v", s.errStack))
 	}
@@ -172,9 +172,13 @@ func (s *Session[T]) Exec() (int64, int64, error) {
 	return lastInsertId, rowsAffected, nil
 }
 
-func (s *Session[T]) Query() ([]T, error) {
+func (s *Session) Query(item any) ([]any, error) {
 	if len(s.errStack) > 0 {
 		return nil, errors.New(fmt.Sprintf("session has errors: %v", s.errStack))
+	}
+	t := reflect.TypeOf(item)
+	if t.Kind() != reflect.Ptr {
+		return nil, errors.New("item must be a pointer to struct")
 	}
 	if s.sqlStr == "" {
 		return nil, errors.New("no SQL to query")
@@ -209,9 +213,9 @@ func (s *Session[T]) Query() ([]T, error) {
 		return nil, err
 	}
 
-	var results []T
+	var results []any
 	for rows.Next() {
-		var item T
+		item := reflect.New(t.Elem()).Interface()
 		scanAddr := make([]any, len(columns))
 		values := make([]any, len(columns))
 		for i := range scanAddr {
@@ -250,7 +254,7 @@ func (s *Session[T]) Query() ([]T, error) {
 	return results, nil
 }
 
-func (s *Session[T]) QueryRow() (int64, error) {
+func (s *Session) QueryRow() (int64, error) {
 	if len(s.errStack) > 0 {
 		return -1, errors.New(fmt.Sprintf("session has errors: %v", s.errStack))
 	}
@@ -281,19 +285,19 @@ func (s *Session[T]) QueryRow() (int64, error) {
 	return count, nil
 }
 
-func (s *Session[T]) Sql(sqlStr string, args ...any) *Session[T] {
+func (s *Session) Sql(sqlStr string, args ...any) *Session {
 	s.sqlStr = sqlStr
 	s.args = append(s.args, args...)
 	return s
 }
 
-func (s *Session[T]) Count() *Session[T] {
+func (s *Session) Count() *Session {
 	// count(*) from tableName where condition
 	s.sqlStr = fmt.Sprintf("SELECT COUNT(*) FROM %s", s.tableName)
 	return s
 }
 
-func (s *Session[T]) Insert(data T) *Session[T] {
+func (s *Session) Insert(data any) *Session {
 	// insert into tableName (field1, field2, ...) values (?, ?, ...)
 	fields, placeholders, err := s.getInsertStr(data)
 	if err != nil {
@@ -307,7 +311,7 @@ func (s *Session[T]) Insert(data T) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) InsertBatch(data []T) *Session[T] {
+func (s *Session) InsertBatch(data []any) *Session {
 	// insert into tableName (field1, field2, ...) values (?, ?, ...), (?, ?, ...), ...
 	if len(data) == 0 {
 		s.errStack = append(s.errStack, errors.New("data slice is empty"))
@@ -329,7 +333,7 @@ func (s *Session[T]) InsertBatch(data []T) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Update(data T) *Session[T] {
+func (s *Session) Update(data any) *Session {
 	// update table tableName set field1 = ?, field2 = ? where condition
 	fields, err := s.getUpdateStr(data)
 	if err != nil {
@@ -344,13 +348,13 @@ func (s *Session[T]) Update(data T) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Delete() *Session[T] {
+func (s *Session) Delete() *Session {
 	// delete from tableName where condition
 	s.sqlStr = fmt.Sprintf("DELETE FROM %s", s.tableName)
 	return s
 }
 
-func (s *Session[T]) Select(fields ...string) *Session[T] {
+func (s *Session) Select(fields ...string) *Session {
 	// select field1, field2 from tableName where condition
 	if len(fields) == 0 {
 		s.sqlStr = fmt.Sprintf("SELECT * FROM %s", s.tableName)
@@ -360,7 +364,7 @@ func (s *Session[T]) Select(fields ...string) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Eq(field string, value any) *Session[T] {
+func (s *Session) Eq(field string, value any) *Session {
 	// add where condition
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -375,7 +379,7 @@ func (s *Session[T]) Eq(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) NotEq(field string, value any) *Session[T] {
+func (s *Session) NotEq(field string, value any) *Session {
 	// add where condition for not equal
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -390,7 +394,7 @@ func (s *Session[T]) NotEq(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Lt(field string, value any) *Session[T] {
+func (s *Session) Lt(field string, value any) *Session {
 	// add where condition for less than
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -405,7 +409,7 @@ func (s *Session[T]) Lt(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Gt(field string, value any) *Session[T] {
+func (s *Session) Gt(field string, value any) *Session {
 	// add where condition for greater than
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -420,7 +424,7 @@ func (s *Session[T]) Gt(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Ge(field string, value any) *Session[T] {
+func (s *Session) Ge(field string, value any) *Session {
 	// add where condition for greater than or equal
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -435,7 +439,7 @@ func (s *Session[T]) Ge(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Le(field string, value any) *Session[T] {
+func (s *Session) Le(field string, value any) *Session {
 	// add where condition for less than or equal
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -450,7 +454,7 @@ func (s *Session[T]) Le(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Like(field string, value any) *Session[T] {
+func (s *Session) Like(field string, value any) *Session {
 	// add where condition for like
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -465,7 +469,7 @@ func (s *Session[T]) Like(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) LikeLeft(field string, value any) *Session[T] {
+func (s *Session) LikeLeft(field string, value any) *Session {
 	// add where condition for like left
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -480,7 +484,7 @@ func (s *Session[T]) LikeLeft(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) LikeRight(field string, value any) *Session[T] {
+func (s *Session) LikeRight(field string, value any) *Session {
 	// add where condition for like right
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add condition"))
@@ -495,7 +499,7 @@ func (s *Session[T]) LikeRight(field string, value any) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) GroupBy(field string) *Session[T] {
+func (s *Session) GroupBy(field string) *Session {
 	// add GROUP BY clause
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add GROUP BY condition"))
@@ -505,7 +509,7 @@ func (s *Session[T]) GroupBy(field string) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) OrderBy(field string, asc bool) *Session[T] {
+func (s *Session) OrderBy(field string, asc bool) *Session {
 	// add ORDER BY clause
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add ORDER BY condition"))
@@ -519,7 +523,7 @@ func (s *Session[T]) OrderBy(field string, asc bool) *Session[T] {
 	return s
 }
 
-func (s *Session[T]) And() *Session[T] {
+func (s *Session) And() *Session {
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add AND condition"))
 		return s
@@ -528,7 +532,7 @@ func (s *Session[T]) And() *Session[T] {
 	return s
 }
 
-func (s *Session[T]) Or() *Session[T] {
+func (s *Session) Or() *Session {
 	if s.sqlStr == "" {
 		s.errStack = append(s.errStack, errors.New("no SQL to add OR condition"))
 		return s
@@ -537,7 +541,7 @@ func (s *Session[T]) Or() *Session[T] {
 	return s
 }
 
-func (s *Session[T]) setArgs(data T) error {
+func (s *Session) setArgs(data any) error {
 	t := reflect.TypeOf(data)
 	if t.Kind() != reflect.Ptr {
 		return errors.New("data must be a pointer to struct")
@@ -549,7 +553,7 @@ func (s *Session[T]) setArgs(data T) error {
 	return nil
 }
 
-func (s *Session[T]) getInsertStr(data T) (string, string, error) {
+func (s *Session) getInsertStr(data any) (string, string, error) {
 	t := reflect.TypeOf(data)
 	if t.Kind() != reflect.Ptr {
 		return "", "", errors.New("data must be a pointer to struct")
@@ -576,7 +580,7 @@ func (s *Session[T]) getInsertStr(data T) (string, string, error) {
 	return strings.Join(fields, ","), strings.Join(placeholders, ","), nil
 }
 
-func (s *Session[T]) getUpdateStr(data T) (string, error) {
+func (s *Session) getUpdateStr(data any) (string, error) {
 	t := reflect.TypeOf(data)
 	if t.Kind() != reflect.Ptr {
 		return "", errors.New("data must be a pointer to struct")
