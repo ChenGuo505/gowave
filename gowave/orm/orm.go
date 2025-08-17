@@ -26,6 +26,9 @@ type GWSession struct {
 
 	conditions      strings.Builder
 	conditionValues []any
+
+	tx      *sql.Tx
+	isBegin bool
 }
 
 func Open() (*GWDB, error) {
@@ -50,9 +53,10 @@ func Open() (*GWDB, error) {
 	return &GWDB{db: db, logger: log.GWLogger}, nil
 }
 
-func (db *GWDB) NewSession() *GWSession {
+func (db *GWDB) NewSession(tableName string) *GWSession {
 	return &GWSession{
-		db: db,
+		db:        db,
+		tableName: tableName,
 	}
 }
 
@@ -76,20 +80,48 @@ func (db *GWDB) Close() error {
 	return db.db.Close()
 }
 
-func (s *GWSession) Table(name string) *GWSession {
-	s.tableName = name
-	return s
+func (s *GWSession) Exec(sqlStr string, args ...any) (int64, int64, error) {
+	s.db.logger.Info(sqlStr)
+	var stmt *sql.Stmt
+	var err error
+	if s.isBegin {
+		stmt, err = s.tx.Prepare(sqlStr)
+	} else {
+		stmt, err = s.db.db.Prepare(sqlStr)
+	}
+	if err != nil {
+		return -1, -1, err
+	}
+	result, err := stmt.Exec(args...)
+	if err != nil {
+		return -1, -1, err
+	}
+	lastInsertId, err := result.LastInsertId()
+	if err != nil {
+		return -1, -1, err
+	}
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return -1, -1, err
+	}
+	return lastInsertId, affectedRows, nil
 }
 
 func (s *GWSession) Insert(data any) (int64, int64, error) {
 	s.setAttributes(data)
 	sqlStr := fmt.Sprintf("insert into %s (%s) values (%s)", s.tableName, strings.Join(s.fields, ","), strings.Join(s.placeHolders, ","))
 	s.db.logger.Info(sqlStr)
-	statement, err := s.db.db.Prepare(sqlStr)
+	var stmt *sql.Stmt
+	var err error
+	if s.isBegin {
+		stmt, err = s.tx.Prepare(sqlStr)
+	} else {
+		stmt, err = s.db.db.Prepare(sqlStr)
+	}
 	if err != nil {
 		return -1, -1, err
 	}
-	result, err := statement.Exec(s.values...)
+	result, err := stmt.Exec(s.values...)
 	if err != nil {
 		return -1, -1, err
 	}
@@ -125,11 +157,17 @@ func (s *GWSession) InsertBatch(data []any) (int64, int64, error) {
 	}
 	sqlStr = sb.String()
 	s.db.logger.Info(sqlStr)
-	statement, err := s.db.db.Prepare(sqlStr)
+	var stmt *sql.Stmt
+	var err error
+	if s.isBegin {
+		stmt, err = s.tx.Prepare(sqlStr)
+	} else {
+		stmt, err = s.db.db.Prepare(sqlStr)
+	}
 	if err != nil {
 		return -1, -1, err
 	}
-	result, err := statement.Exec(s.values...)
+	result, err := stmt.Exec(s.values...)
 	if err != nil {
 		return -1, -1, err
 	}
@@ -153,11 +191,17 @@ func (s *GWSession) Update(data any) (int64, int64, error) {
 	sqlStr := fmt.Sprintf("update table %s set %s %s", s.tableName, strings.Join(s.updateFields, ","), s.conditions.String())
 	s.values = append(s.values, s.conditionValues...)
 	s.db.logger.Info(sqlStr)
-	statement, err := s.db.db.Prepare(sqlStr)
+	var stmt *sql.Stmt
+	var err error
+	if s.isBegin {
+		stmt, err = s.tx.Prepare(sqlStr)
+	} else {
+		stmt, err = s.db.db.Prepare(sqlStr)
+	}
 	if err != nil {
 		return -1, -1, err
 	}
-	result, err := statement.Exec(s.values...)
+	result, err := stmt.Exec(s.values...)
 	if err != nil {
 		return -1, -1, err
 	}
@@ -176,10 +220,10 @@ func (s *GWSession) Update(data any) (int64, int64, error) {
 	return lastInsertId, affectedRows, nil
 }
 
-func (s *GWSession) SelectOne(data any, fields ...string) error {
+func (s *GWSession) SelectOne(data any, fields ...string) (any, error) {
 	t := reflect.TypeOf(data)
 	if t.Kind() != reflect.Ptr {
-		return errors.New("data must be a pointer to a struct")
+		return nil, errors.New("data must be a pointer to a struct")
 	}
 	fieldsStr := "*"
 	if len(fields) > 0 {
@@ -187,27 +231,33 @@ func (s *GWSession) SelectOne(data any, fields ...string) error {
 	}
 	sqlStr := fmt.Sprintf("select %s from %s where %s", fieldsStr, s.tableName, s.conditions.String())
 	s.db.logger.Info(sqlStr)
-	statement, err := s.db.db.Prepare(sqlStr)
-	if err != nil {
-		return err
+	var stmt *sql.Stmt
+	var err error
+	if s.isBegin {
+		stmt, err = s.tx.Prepare(sqlStr)
+	} else {
+		stmt, err = s.db.db.Prepare(sqlStr)
 	}
-	rows, err := statement.Query(s.conditionValues...)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	rows, err := stmt.Query(s.conditionValues...)
+	if err != nil {
+		return nil, err
 	}
 	columns, err := rows.Columns()
 	if err != nil {
-		return err
-	}
-	fieldsScan := make([]any, len(columns))
-	values := make([]any, len(columns))
-	for i := range fieldsScan {
-		fieldsScan[i] = &values[i]
+		return nil, err
 	}
 	if rows.Next() {
+		fieldsScan := make([]any, len(columns))
+		values := make([]any, len(columns))
+		for i := range fieldsScan {
+			fieldsScan[i] = &values[i]
+		}
 		err := rows.Scan(fieldsScan...)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		tElem := t.Elem()
 		vElem := reflect.ValueOf(data).Elem()
@@ -234,17 +284,93 @@ func (s *GWSession) SelectOne(data any, fields ...string) error {
 	}
 	s.conditions.Reset()
 	s.conditionValues = make([]any, 0)
-	return nil
+	return data, nil
+}
+
+func (s *GWSession) SelectAll(data any, fields ...string) ([]any, error) {
+	t := reflect.TypeOf(data)
+	if t.Kind() != reflect.Ptr {
+		return nil, errors.New("data must be a pointer to a struct")
+	}
+	fieldsStr := "*"
+	if len(fields) > 0 {
+		fieldsStr = strings.Join(fields, ",")
+	}
+	sqlStr := fmt.Sprintf("select %s from %s where %s", fieldsStr, s.tableName, s.conditions.String())
+	s.db.logger.Info(sqlStr)
+	var stmt *sql.Stmt
+	var err error
+	if s.isBegin {
+		stmt, err = s.tx.Prepare(sqlStr)
+	} else {
+		stmt, err = s.db.db.Prepare(sqlStr)
+	}
+	if err != nil {
+		return nil, err
+	}
+	rows, err := stmt.Query(s.conditionValues...)
+	if err != nil {
+		return nil, err
+	}
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]any, 0)
+	for rows.Next() {
+		data = reflect.New(t.Elem()).Interface()
+		fieldsScan := make([]any, len(columns))
+		values := make([]any, len(columns))
+		for i := range fieldsScan {
+			fieldsScan[i] = &values[i]
+		}
+		err := rows.Scan(fieldsScan...)
+		if err != nil {
+			return nil, err
+		}
+		tElem := t.Elem()
+		vElem := reflect.ValueOf(data).Elem()
+		for i := 0; i < tElem.NumField(); i++ {
+			name := tElem.Field(i).Name
+			tag := tElem.Field(i).Tag.Get("orm")
+			if tag == "" {
+				tag = strings.ToLower(name)
+			} else {
+				if strings.Contains(tag, ",") {
+					tag = tag[:strings.Index(tag, ",")]
+				}
+			}
+			for j, column := range columns {
+				if tag == column {
+					val := values[j]
+					valOf := reflect.ValueOf(val)
+					fieldType := tElem.Field(i).Type
+					convert := reflect.ValueOf(valOf.Interface()).Convert(fieldType)
+					vElem.Field(i).Set(convert)
+				}
+			}
+		}
+		result = append(result, data)
+	}
+	s.conditions.Reset()
+	s.conditionValues = make([]any, 0)
+	return result, nil
 }
 
 func (s *GWSession) Delete() (int64, int64, error) {
 	sqlStr := fmt.Sprintf("delete from %s %s", s.tableName, s.conditions.String())
 	s.db.logger.Info(sqlStr)
-	statement, err := s.db.db.Prepare(sqlStr)
+	var stmt *sql.Stmt
+	var err error
+	if s.isBegin {
+		stmt, err = s.tx.Prepare(sqlStr)
+	} else {
+		stmt, err = s.db.db.Prepare(sqlStr)
+	}
 	if err != nil {
 		return -1, -1, err
 	}
-	result, err := statement.Exec(s.conditionValues...)
+	result, err := stmt.Exec(s.conditionValues...)
 	if err != nil {
 		return -1, -1, err
 	}
@@ -259,6 +385,60 @@ func (s *GWSession) Delete() (int64, int64, error) {
 	s.conditions.Reset()
 	s.conditionValues = make([]any, 0)
 	return lastInsertId, affectedRows, nil
+}
+
+func (s *GWSession) Begin() error {
+	tx, err := s.db.db.Begin()
+	if err != nil {
+		return err
+	}
+	s.tx = tx
+	s.isBegin = true
+	return nil
+}
+
+func (s *GWSession) Commit() error {
+	if !s.isBegin {
+		return errors.New("transaction not started")
+	}
+	err := s.tx.Commit()
+	if err != nil {
+		return err
+	}
+	s.isBegin = false
+	s.tx = nil
+	return nil
+}
+
+func (s *GWSession) Rollback() error {
+	if !s.isBegin {
+		return errors.New("transaction not started")
+	}
+	err := s.tx.Rollback()
+	if err != nil {
+		return err
+	}
+	s.isBegin = false
+	s.tx = nil
+	return nil
+}
+
+func (s *GWSession) Count() (int64, error) {
+	sqlStr := fmt.Sprintf("select count(*) from %s %s", s.tableName, s.conditions.String())
+	s.db.logger.Info(sqlStr)
+	statement, err := s.db.db.Prepare(sqlStr)
+	if err != nil {
+		return -1, err
+	}
+	row := statement.QueryRow(s.conditionValues...)
+	var count int64
+	err = row.Scan(&count)
+	if err != nil {
+		return -1, err
+	}
+	s.conditions.Reset()
+	s.conditionValues = make([]any, 0)
+	return count, nil
 }
 
 func (s *GWSession) Equals(field string, value any) *GWSession {
@@ -312,6 +492,56 @@ func (s *GWSession) LessThanOrEqual(field string, value any) *GWSession {
 	}
 	s.conditions.WriteString(fmt.Sprintf("%s <= ?", field))
 	s.conditionValues = append(s.conditionValues, value)
+	return s
+}
+
+func (s *GWSession) Like(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
+	s.conditions.WriteString(fmt.Sprintf("%s like ?", field))
+	s.conditionValues = append(s.conditionValues, "%"+value.(string)+"%")
+	return s
+}
+
+func (s *GWSession) LikeLeft(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
+	s.conditions.WriteString(fmt.Sprintf("%s like ?", field))
+	s.conditionValues = append(s.conditionValues, "%"+value.(string))
+	return s
+}
+
+func (s *GWSession) LikeRight(field string, value any) *GWSession {
+	if s.conditions.String() == "" {
+		s.conditions.WriteString("where ")
+	}
+	s.conditions.WriteString(fmt.Sprintf("%s like ?", field))
+	s.conditionValues = append(s.conditionValues, value.(string)+"%")
+	return s
+}
+
+func (s *GWSession) GroupBy(fields ...string) *GWSession {
+	if len(fields) == 0 {
+		return s
+	}
+	s.conditions.WriteString(" group by ")
+	s.conditions.WriteString(strings.Join(fields, ","))
+	return s
+}
+
+func (s *GWSession) OrderBy(asc bool, field string) *GWSession {
+	if len(field) == 0 {
+		return s
+	}
+	s.conditions.WriteString(" order by ")
+	s.conditions.WriteString(field)
+	if asc {
+		s.conditions.WriteString(" asc")
+	} else {
+		s.conditions.WriteString(" desc")
+	}
 	return s
 }
 
