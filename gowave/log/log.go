@@ -2,13 +2,14 @@ package log
 
 import (
 	"fmt"
-	"github.com/ChenGuo505/gowave/internal/gwstrings"
 	"io"
 	"log"
 	"os"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/ChenGuo505/gowave/internal/gwstrings"
 )
 
 var (
