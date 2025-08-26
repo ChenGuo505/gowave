@@ -31,8 +31,6 @@ const (
 const (
 	msgRequest = iota
 	msgResponse
-	msgPing
-	msgPong
 )
 
 const MagicNumber = 0x1
@@ -399,7 +397,7 @@ func (c *TcpClient) Connect() error {
 	return nil
 }
 
-func (c *TcpClient) Invoke(ctx context.Context, service string, method string, args []any) (any, error) {
+func (c *TcpClient) Invoke(_ context.Context, service string, method string, args []any) (any, error) {
 	req := &Request{
 		RequestID:   time.Now().UnixNano(),
 		ServiceName: service,
