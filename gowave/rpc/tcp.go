@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ChenGuo505/gowave/log"
+	"github.com/ChenGuo505/gowave/register"
 )
 
 type SerializerProtocol byte
@@ -133,6 +134,8 @@ type GWRpcServer interface {
 }
 
 type TcpServer struct {
+	host       string
+	port       uint64
 	listener   net.Listener
 	serviceMap map[string]any
 }
@@ -154,8 +157,8 @@ func (c *TcpConn) Send(head []byte, body []byte) error {
 	return nil
 }
 
-func NewTcpServer(addr string) (*TcpServer, error) {
-	listener, err := net.Listen("tcp", addr)
+func NewTcpServer(host string, port uint64) (*TcpServer, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +173,14 @@ func (s *TcpServer) Register(name string, service any) {
 		panic("service must be a pointer to struct")
 	}
 	s.serviceMap[name] = service
+	client, err := register.CreateNacosClient()
+	if err != nil {
+		panic(err)
+	}
+	err = register.Register(client, name, s.host, s.port)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (s *TcpServer) Start() {
@@ -377,7 +388,7 @@ func decodeFrame(conn *TcpConn) (*Message, error) {
 }
 
 type Client interface {
-	Connect() error
+	Connect(string) error
 	Invoke(context.Context, string, string, []any) (any, error)
 	Close() error
 }
@@ -387,7 +398,17 @@ type TcpClient struct {
 	option TcpClientOption
 }
 
-func (c *TcpClient) Connect() error {
+func (c *TcpClient) Connect(service string) error {
+	client, err := register.CreateNacosClient()
+	if err != nil {
+		return err
+	}
+	host, port, err := register.GetInstances(client, service)
+	if err != nil {
+		return err
+	}
+	c.option.Host = host
+	c.option.Port = int(port)
 	addr := fmt.Sprintf("%s:%d", c.option.Host, c.option.Port)
 	conn, err := net.DialTimeout("tcp", addr, c.option.ConnectTimeout)
 	if err != nil {
@@ -499,7 +520,7 @@ func NewTcpClientProxy(option TcpClientOption) *TcpClientProxy {
 func (p *TcpClientProxy) Call(ctx context.Context, service string, method string, args []any) (any, error) {
 	client := NewTcpClient(p.option)
 	p.client = client
-	err := client.Connect()
+	err := client.Connect(service)
 	if err != nil {
 		return nil, err
 	}
