@@ -10,6 +10,7 @@ import (
 var RootConfig = &GWConfig{}
 
 type GWConfig struct {
+	Server     map[string]any `toml:"server"`
 	Log        map[string]any `toml:"log"`
 	DataSource map[string]any `toml:"datasource"`
 }

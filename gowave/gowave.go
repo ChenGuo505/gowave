@@ -192,8 +192,12 @@ func (e *Engine) handler() http.Handler {
 func (e *Engine) Run() {
 	http.Handle("/", e)
 
-	e.Logger.Info("Listening on :8080")
-	err := http.ListenAndServe(":8080", nil)
+	port, ok := config.RootConfig.Server["port"]
+	if !ok {
+		port = "8080"
+	}
+	e.Logger.Info(fmt.Sprintf("Starting server on port :%s", port))
+	err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
 	if err != nil {
 		e.Logger.Fatal(fmt.Sprintf("Failed to start server: %v", err))
 		return
