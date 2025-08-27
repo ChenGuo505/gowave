@@ -116,6 +116,13 @@ func (c *Context) GetQueryMap(key string) map[string]string {
 	return c.getFromMap(c.queryCache, key)
 }
 
+func (c *Context) GetHeader(key string) string {
+	if c.Req != nil {
+		return c.Req.Header.Get(key)
+	}
+	return ""
+}
+
 func (c *Context) initFormCache() {
 	if c.Req != nil {
 		if err := c.Req.ParseMultipartForm(defaultMaxMemory); err != nil {

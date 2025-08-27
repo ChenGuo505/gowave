@@ -13,7 +13,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/ChenGuo505/gowave/config"
 	"github.com/ChenGuo505/gowave/log"
 	"github.com/ChenGuo505/gowave/register"
 )
@@ -166,7 +165,7 @@ func NewTcpServer(host string, port uint64) (*TcpServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := loadRegister()
+	r := register.LoadRegister()
 	if err := r.CreateClient(); err != nil {
 		return nil, err
 	}
@@ -183,6 +182,7 @@ func (s *TcpServer) Register(name string, service any) {
 	if t.Kind() != reflect.Ptr {
 		panic("service must be a pointer to struct")
 	}
+	name = fmt.Sprintf("rpc-%s", name)
 	s.serviceMap[name] = service
 	err := s.register.RegisterService(name, s.host, int(s.port))
 	if err != nil {
@@ -406,6 +406,7 @@ type TcpClient struct {
 }
 
 func (c *TcpClient) Connect(service string) error {
+	service = fmt.Sprintf("rpc-%s", service)
 	addr, err := c.option.Register.GetInstance(service)
 	if err != nil {
 		return err
@@ -520,7 +521,7 @@ func NewTcpClientProxy(option TcpClientOption) *TcpClientProxy {
 
 func (p *TcpClientProxy) Call(ctx context.Context, service string, method string, args []any) (any, error) {
 	client := NewTcpClient(p.option)
-	client.option.Register = loadRegister()
+	client.option.Register = register.LoadRegister()
 	err := client.option.Register.CreateClient()
 	if err != nil {
 		return nil, err
@@ -568,14 +569,4 @@ func loadSerializer(t SerializerProtocol) Serializer {
 	default:
 		return &GobSerializer{}
 	}
-}
-
-func loadRegister() register.Register {
-	if config.RootConfig.Nacos != nil {
-		return &register.NacosRegister{}
-	}
-	if config.RootConfig.Etcd != nil {
-		return &register.EtcdRegister{}
-	}
-	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/ChenGuo505/gowave/config"
 	"github.com/ChenGuo505/gowave/gateway"
 	gwlog "github.com/ChenGuo505/gowave/log"
+	"github.com/ChenGuo505/gowave/register"
 	"github.com/ChenGuo505/gowave/render"
 )
 
@@ -120,6 +121,7 @@ type Engine struct {
 	middlewares      []MiddlewareFunc
 	gatewayTrie      *Trie
 	gatewayConfigMap map[string]gateway.Config
+	register         register.Register
 	pool             sync.Pool
 }
 
@@ -139,6 +141,12 @@ func New() *Engine {
 	}
 	engine.middlewares = []MiddlewareFunc{Logging, Recovery}
 	engine.router.engine = engine
+	engine.register = register.LoadRegister()
+	if engine.register != nil {
+		if err := engine.register.CreateClient(); err != nil {
+			engine.Logger.Fatal(err)
+		}
+	}
 	return engine
 }
 
@@ -185,8 +193,15 @@ func (e *Engine) handleRequest(ctx *Context, w http.ResponseWriter, req *http.Re
 			return
 		}
 		conf := e.gatewayConfigMap[node.Name]
+		conf.SetHeader(req)
+		addr, err := e.register.GetInstance(conf.Name)
+		if err != nil {
+			ctx.W.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprintf(ctx.W, "500 Internal Server Error")
+			return
+		}
 		//goland:noinspection HttpUrlsUsage
-		target, err := url.Parse(fmt.Sprintf("http://%s:%d%s", conf.Host, conf.Port, path))
+		target, err := url.Parse(fmt.Sprintf("http://%s%s", addr, path))
 		if err != nil {
 			ctx.W.WriteHeader(http.StatusInternalServerError)
 			_, _ = fmt.Fprintf(ctx.W, "500 Internal Server Error")
@@ -263,5 +278,17 @@ func (e *Engine) RunWithTLS(addr, certFile, keyFile string) {
 	if err != nil {
 		e.Logger.Fatal(fmt.Sprintf("Failed to start server with TLS: %v", err))
 		return
+	}
+}
+
+func (e *Engine) Register(service string, host string, port int) {
+	if e.register != nil {
+		service = fmt.Sprintf("http-%s", service)
+		err := e.register.RegisterService(service, host, port)
+		if err != nil {
+			e.Logger.Fatal(fmt.Sprintf("Failed to register service: %v", err))
+			return
+		}
+		e.Logger.Info(fmt.Sprintf("Service registered: %s at %s:%d", service, host, port))
 	}
 }

@@ -1,8 +1,9 @@
 package gateway
 
+import "net/http"
+
 type Config struct {
-	Name string
-	Host string
-	Port int
-	Path string
+	Name      string
+	Path      string
+	SetHeader func(req *http.Request)
 }
