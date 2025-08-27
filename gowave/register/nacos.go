@@ -1,13 +1,19 @@
 package register
 
 import (
+	"fmt"
+
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/vo"
 )
 
-func CreateNacosClient() (naming_client.INamingClient, error) {
+type NacosRegister struct {
+	Client naming_client.INamingClient
+}
+
+func (r *NacosRegister) CreateClient() error {
 	clientConfig := *constant.NewClientConfig(
 		constant.WithNamespaceId(""), //当namespace是public时，此处填空字符串。
 		constant.WithTimeoutMs(5000),
@@ -31,15 +37,16 @@ func CreateNacosClient() (naming_client.INamingClient, error) {
 		},
 	)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return cli, nil
+	r.Client = cli
+	return nil
 }
 
-func Register(namingClient naming_client.INamingClient, service string, host string, port uint64) error {
-	_, err := namingClient.RegisterInstance(vo.RegisterInstanceParam{
+func (r *NacosRegister) RegisterService(service string, host string, port int) error {
+	_, err := r.Client.RegisterInstance(vo.RegisterInstanceParam{
 		Ip:          host,
-		Port:        port,
+		Port:        uint64(port),
 		ServiceName: service,
 		Weight:      10,
 		Enable:      true,
@@ -50,12 +57,17 @@ func Register(namingClient naming_client.INamingClient, service string, host str
 	return err
 }
 
-func GetInstances(namingClient naming_client.INamingClient, service string) (string, uint64, error) {
-	instance, err := namingClient.SelectOneHealthyInstance(vo.SelectOneHealthInstanceParam{
+func (r *NacosRegister) GetInstance(service string) (string, error) {
+	instance, err := r.Client.SelectOneHealthyInstance(vo.SelectOneHealthInstanceParam{
 		ServiceName: service,
 	})
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
-	return instance.Ip, instance.Port, nil
+	addr := fmt.Sprintf("%s:%d", instance.Ip, instance.Port)
+	return addr, nil
+}
+
+func (r *NacosRegister) Close() error {
+	return nil
 }

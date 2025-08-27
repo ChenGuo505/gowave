@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/ChenGuo505/gowave/config"
 	"github.com/ChenGuo505/gowave/log"
 	"github.com/ChenGuo505/gowave/register"
 )
@@ -133,11 +134,19 @@ type GWRpcServer interface {
 	Stop()
 }
 
+type RegisterCenter string
+
+const (
+	Nacos RegisterCenter = "nacos"
+	Etcd  RegisterCenter = "etcd"
+)
+
 type TcpServer struct {
 	host       string
 	port       uint64
 	listener   net.Listener
 	serviceMap map[string]any
+	register   register.Register
 }
 
 type TcpConn struct {
@@ -162,8 +171,15 @@ func NewTcpServer(host string, port uint64) (*TcpServer, error) {
 	if err != nil {
 		return nil, err
 	}
+	r := loadRegister()
+	if err := r.CreateClient(); err != nil {
+		return nil, err
+	}
 	return &TcpServer{
+		host:     host,
+		port:     port,
 		listener: listener,
+		register: r,
 	}, nil
 }
 
@@ -173,11 +189,7 @@ func (s *TcpServer) Register(name string, service any) {
 		panic("service must be a pointer to struct")
 	}
 	s.serviceMap[name] = service
-	client, err := register.CreateNacosClient()
-	if err != nil {
-		panic(err)
-	}
-	err = register.Register(client, name, s.host, s.port)
+	err := s.register.RegisterService(name, s.host, int(s.port))
 	if err != nil {
 		panic(err)
 	}
@@ -399,17 +411,10 @@ type TcpClient struct {
 }
 
 func (c *TcpClient) Connect(service string) error {
-	client, err := register.CreateNacosClient()
+	addr, err := c.option.Register.GetInstance(service)
 	if err != nil {
 		return err
 	}
-	host, port, err := register.GetInstances(client, service)
-	if err != nil {
-		return err
-	}
-	c.option.Host = host
-	c.option.Port = int(port)
-	addr := fmt.Sprintf("%s:%d", c.option.Host, c.option.Port)
 	conn, err := net.DialTimeout("tcp", addr, c.option.ConnectTimeout)
 	if err != nil {
 		return err
@@ -495,6 +500,7 @@ type TcpClientOption struct {
 	ConnectTimeout time.Duration
 	CompressorType CompressorProtocol
 	SerializerType SerializerProtocol
+	Register       register.Register
 	Host           string
 	Port           int
 }
@@ -519,8 +525,13 @@ func NewTcpClientProxy(option TcpClientOption) *TcpClientProxy {
 
 func (p *TcpClientProxy) Call(ctx context.Context, service string, method string, args []any) (any, error) {
 	client := NewTcpClient(p.option)
+	client.option.Register = loadRegister()
+	err := client.option.Register.CreateClient()
+	if err != nil {
+		return nil, err
+	}
 	p.client = client
-	err := client.Connect(service)
+	err = client.Connect(service)
 	if err != nil {
 		return nil, err
 	}
@@ -562,4 +573,14 @@ func loadSerializer(t SerializerProtocol) Serializer {
 	default:
 		return &GobSerializer{}
 	}
+}
+
+func loadRegister() register.Register {
+	if config.RootConfig.Nacos != nil {
+		return &register.NacosRegister{}
+	}
+	if config.RootConfig.Etcd != nil {
+		return &register.EtcdRegister{}
+	}
+	return nil
 }

@@ -2,9 +2,10 @@ package config
 
 import (
 	"flag"
+	"os"
+
 	"github.com/BurntSushi/toml"
 	gwlog "github.com/ChenGuo505/gowave/log"
-	"os"
 )
 
 var RootConfig = &GWConfig{}
@@ -13,6 +14,8 @@ type GWConfig struct {
 	Server     map[string]any `toml:"server"`
 	Log        map[string]any `toml:"log"`
 	DataSource map[string]any `toml:"datasource"`
+	Nacos      map[string]any `toml:"nacos"`
+	Etcd       map[string]any `toml:"etcd"`
 }
 
 func init() {
