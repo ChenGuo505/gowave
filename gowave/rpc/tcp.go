@@ -136,11 +136,6 @@ type GWRpcServer interface {
 
 type RegisterCenter string
 
-const (
-	Nacos RegisterCenter = "nacos"
-	Etcd  RegisterCenter = "etcd"
-)
-
 type TcpServer struct {
 	host       string
 	port       uint64

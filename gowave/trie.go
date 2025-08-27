@@ -12,11 +12,11 @@ func NewTrie() *Trie {
 	}
 }
 
-func (t *Trie) Put(text string) {
+func (t *Trie) Put(text string, name string) {
 	if t.Root == nil {
 		t.Root = &Node{text: "/", children: make([]*Node, 0)}
 	}
-	t.Root.Put(text)
+	t.Root.Put(text, name)
 }
 
 func (t *Trie) Get(text string) *Node {
@@ -27,13 +27,14 @@ func (t *Trie) Get(text string) *Node {
 }
 
 type Node struct {
+	Name       string
 	text       string
 	routerName string
 	children   []*Node
 	isEnd      bool
 }
 
-func (n *Node) Put(text string) {
+func (n *Node) Put(text string, name string) {
 	cur := n
 	strList := strings.Split(text, "/")
 	routerName := ""
@@ -57,7 +58,7 @@ func (n *Node) Put(text string) {
 				isEnd = true
 			}
 			routerName += "/" + str
-			node := &Node{text: str, routerName: routerName, children: make([]*Node, 0), isEnd: isEnd}
+			node := &Node{text: str, routerName: routerName, children: make([]*Node, 0), isEnd: isEnd, Name: name}
 			children = append(children, node)
 			cur.children = children
 			cur = node

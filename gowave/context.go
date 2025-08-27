@@ -2,9 +2,6 @@ package gowave
 
 import (
 	"errors"
-	"github.com/ChenGuo505/gowave/binding"
-	gwlog "github.com/ChenGuo505/gowave/log"
-	"github.com/ChenGuo505/gowave/render"
 	"html/template"
 	"io"
 	"log"
@@ -14,6 +11,10 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/ChenGuo505/gowave/binding"
+	gwlog "github.com/ChenGuo505/gowave/log"
+	"github.com/ChenGuo505/gowave/render"
 )
 
 const (

@@ -2,12 +2,16 @@ package gowave
 
 import (
 	"fmt"
-	"github.com/ChenGuo505/gowave/config"
-	gwlog "github.com/ChenGuo505/gowave/log"
-	"github.com/ChenGuo505/gowave/render"
 	"html/template"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"sync"
+
+	"github.com/ChenGuo505/gowave/config"
+	"github.com/ChenGuo505/gowave/gateway"
+	gwlog "github.com/ChenGuo505/gowave/log"
+	"github.com/ChenGuo505/gowave/render"
 )
 
 type HandlerFunc func(ctx *Context)
@@ -49,7 +53,7 @@ func (g *routerGroup) register(path string, handler HandlerFunc, method string, 
 		handler = middleware(handler)
 	}
 	g.routes[path][method] = handler
-	g.trie.Put(path)
+	g.trie.Put(path, "")
 }
 
 func (g *routerGroup) Any(path string, handler HandlerFunc, middlewares ...MiddlewareFunc) {
@@ -109,16 +113,21 @@ func (r *router) Group(prefix string) *routerGroup {
 
 type Engine struct {
 	router
-	funcMap     template.FuncMap
-	HTMLRender  render.HTMLRender
-	pool        sync.Pool
-	Logger      *gwlog.Logger
-	middlewares []MiddlewareFunc
+	HTMLRender       render.HTMLRender
+	Logger           *gwlog.Logger
+	GatewayOn        bool
+	funcMap          template.FuncMap
+	middlewares      []MiddlewareFunc
+	gatewayTrie      *Trie
+	gatewayConfigMap map[string]gateway.Config
+	pool             sync.Pool
 }
 
 func New() *Engine {
 	engine := &Engine{
-		router: router{},
+		router:           router{},
+		gatewayTrie:      NewTrie(),
+		gatewayConfigMap: make(map[string]gateway.Config),
 	}
 	engine.pool.New = func() any {
 		return engine.allocateContext()
@@ -145,6 +154,13 @@ func (e *Engine) SetHTMLRender(template *template.Template) {
 	e.HTMLRender = render.HTMLRender{Template: template}
 }
 
+func (e *Engine) SetGatewayConfigs(configs []gateway.Config) {
+	for _, conf := range configs {
+		e.gatewayTrie.Put(conf.Path, conf.Name)
+		e.gatewayConfigMap[conf.Name] = conf
+	}
+}
+
 func (e *Engine) LoadTemplate(pattern string) {
 	t := template.Must(template.New("").Funcs(e.funcMap).ParseGlob(pattern))
 	e.SetHTMLRender(t)
@@ -160,6 +176,44 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (e *Engine) handleRequest(ctx *Context, w http.ResponseWriter, req *http.Request) {
+	if e.GatewayOn {
+		path := req.URL.Path
+		node := e.gatewayTrie.Get(path)
+		if node == nil {
+			ctx.W.WriteHeader(http.StatusNotFound)
+			_, _ = fmt.Fprintf(ctx.W, "404 Not Found")
+			return
+		}
+		conf := e.gatewayConfigMap[node.Name]
+		//goland:noinspection HttpUrlsUsage
+		target, err := url.Parse(fmt.Sprintf("http://%s:%d%s", conf.Host, conf.Port, path))
+		if err != nil {
+			ctx.W.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprintf(ctx.W, "500 Internal Server Error")
+			return
+		}
+		director := func(req *http.Request) {
+			req.Host = target.Host
+			req.URL.Host = target.Host
+			req.URL.Path = target.Path
+			req.URL.Scheme = target.Scheme
+			if _, ok := req.Header["User-Agent"]; !ok {
+				// explicitly disable User-Agent so it's not set to default value
+				req.Header.Set("User-Agent", "")
+			}
+		}
+		response := func(resp *http.Response) error {
+			return nil
+		}
+		handler := func(w http.ResponseWriter, r *http.Request, err error) {}
+		proxy := httputil.ReverseProxy{
+			Director:       director,
+			ModifyResponse: response,
+			ErrorHandler:   handler,
+		}
+		proxy.ServeHTTP(w, req)
+		return
+	}
 	e.Logger.Info(fmt.Sprintf("path: %s, method: %s", req.URL.Path, req.Method))
 	for _, group := range e.routerGroups {
 		routerName := TrimPrefix(req.URL.Path, "/"+group.prefix)
