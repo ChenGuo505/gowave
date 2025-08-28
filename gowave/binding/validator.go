@@ -2,9 +2,10 @@ package binding
 
 import (
 	"errors"
-	"github.com/go-playground/validator/v10"
 	"reflect"
 	"sync"
+
+	"github.com/go-playground/validator/v10"
 )
 
 type StructValidator interface {
