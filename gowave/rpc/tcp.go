@@ -15,6 +15,7 @@ import (
 
 	"github.com/ChenGuo505/gowave/log"
 	"github.com/ChenGuo505/gowave/register"
+	"golang.org/x/time/rate"
 )
 
 type SerializerProtocol byte
@@ -141,6 +142,7 @@ type TcpServer struct {
 	listener   net.Listener
 	serviceMap map[string]any
 	register   register.Register
+	limiter    *rate.Limiter
 }
 
 type TcpConn struct {
@@ -169,11 +171,13 @@ func NewTcpServer(host string, port uint64) (*TcpServer, error) {
 	if err := r.CreateClient(); err != nil {
 		return nil, err
 	}
+	limiter := rate.NewLimiter(1, 1)
 	return &TcpServer{
 		host:     host,
 		port:     port,
 		listener: listener,
 		register: r,
+		limiter:  limiter,
 	}, nil
 }
 
@@ -219,6 +223,16 @@ func (s *TcpServer) readHandler(conn *TcpConn) {
 			}
 		}
 	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := s.limiter.WaitN(ctx, 1)
+	if err != nil {
+		conn.respChan <- &Response{
+			Code: 429,
+			Msg:  "too many requests",
+		}
+		return
+	}
 	msg, err := decodeFrame(conn)
 	if err != nil {
 		conn.respChan <- &Response{
