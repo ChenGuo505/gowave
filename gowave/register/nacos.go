@@ -23,14 +23,6 @@ func (r *NacosRegister) CreateClient() error {
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("debug"),
 	)
-	//serverConfigs := []constant.ServerConfig{
-	//	*constant.NewServerConfig(
-	//		"127.0.0.1",
-	//		8848,
-	//		constant.WithScheme("http"),
-	//		constant.WithContextPath("/nacos"),
-	//	),
-	//}
 	serverConfigs := make([]constant.ServerConfig, 0)
 	for _, ep := range config.RootConfig.RegisterCenter.Endpoints {
 		serverConfigs = append(serverConfigs, *constant.NewServerConfig(
