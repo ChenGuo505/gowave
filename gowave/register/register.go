@@ -6,6 +6,11 @@ import (
 	"github.com/ChenGuo505/gowave/config"
 )
 
+const (
+	Nacos = "nacos"
+	Etcd  = "etcd"
+)
+
 type Option struct {
 	Endpoints   []string
 	DialTimeout time.Duration
@@ -22,11 +27,12 @@ type Register interface {
 }
 
 func LoadRegister() Register {
-	if config.RootConfig.Etcd != nil {
-		return &EtcdRegister{}
-	}
-	if config.RootConfig.Nacos != nil {
+	switch config.RootConfig.RegisterCenter.Type {
+	case Nacos:
 		return &NacosRegister{}
+	case Etcd:
+		return &EtcdRegister{}
+	default:
+		return nil
 	}
-	return nil
 }

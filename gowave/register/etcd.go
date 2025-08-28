@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/ChenGuo505/gowave/config"
 	"github.com/google/uuid"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -23,8 +24,12 @@ type EtcdRegister struct {
 }
 
 func (r *EtcdRegister) CreateClient() error {
+	eps := make([]string, 0)
+	for _, ep := range config.RootConfig.RegisterCenter.Endpoints {
+		eps = append(eps, fmt.Sprintf("%s:%d", ep.Host, ep.Port))
+	}
 	option := &Option{
-		Endpoints:   []string{"localhost:2379"},
+		Endpoints:   eps,
 		DialTimeout: 5 * time.Second,
 	}
 	client, err := clientv3.New(clientv3.Config{

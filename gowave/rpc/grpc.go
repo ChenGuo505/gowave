@@ -69,7 +69,7 @@ func WithOptions(opts ...grpc.ServerOption) GrpcOption {
 }
 
 type GrpcClient struct {
-	conn *grpc.ClientConn
+	Conn *grpc.ClientConn
 }
 
 func NewGrpcClient(conf *GrpcClientConfig) (*GrpcClient, error) {
@@ -89,7 +89,7 @@ func NewGrpcClient(conf *GrpcClientConfig) (*GrpcClient, error) {
 		return nil, err
 	}
 	return &GrpcClient{
-		conn: conn,
+		Conn: conn,
 	}, nil
 }
 

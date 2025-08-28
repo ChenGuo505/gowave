@@ -3,6 +3,7 @@ package register
 import (
 	"fmt"
 
+	"github.com/ChenGuo505/gowave/config"
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
@@ -22,13 +23,22 @@ func (r *NacosRegister) CreateClient() error {
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("debug"),
 	)
-	serverConfigs := []constant.ServerConfig{
-		*constant.NewServerConfig(
-			"127.0.0.1",
-			8848,
+	//serverConfigs := []constant.ServerConfig{
+	//	*constant.NewServerConfig(
+	//		"127.0.0.1",
+	//		8848,
+	//		constant.WithScheme("http"),
+	//		constant.WithContextPath("/nacos"),
+	//	),
+	//}
+	serverConfigs := make([]constant.ServerConfig, 0)
+	for _, ep := range config.RootConfig.RegisterCenter.Endpoints {
+		serverConfigs = append(serverConfigs, *constant.NewServerConfig(
+			ep.Host,
+			uint64(ep.Port),
 			constant.WithScheme("http"),
 			constant.WithContextPath("/nacos"),
-		),
+		))
 	}
 	cli, err := clients.NewNamingClient(
 		vo.NacosClientParam{

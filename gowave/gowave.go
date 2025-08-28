@@ -135,8 +135,8 @@ func New() *Engine {
 		return engine.allocateContext()
 	}
 	engine.Logger = gwlog.DefaultLogger()
-	logPath, ok := config.RootConfig.Log["path"].(string)
-	if ok && logPath != "" {
+	logPath := config.RootConfig.Log.Path
+	if logPath != "" {
 		engine.Logger.SetLogPath(logPath)
 	}
 	engine.middlewares = []MiddlewareFunc{Logging, Recovery}
@@ -261,12 +261,12 @@ func (e *Engine) handler() http.Handler {
 func (e *Engine) Run() {
 	http.Handle("/", e)
 
-	port, ok := config.RootConfig.Server["port"]
-	if !ok {
-		port = "8080"
+	port := config.RootConfig.Http.Port
+	if port == 0 {
+		port = 8080
 	}
-	e.Logger.Info(fmt.Sprintf("Starting server on port :%s", port))
-	err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
+	e.Logger.Info(fmt.Sprintf("Starting server on port :%d", port))
+	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	if err != nil {
 		e.Logger.Fatal(fmt.Sprintf("Failed to start server: %v", err))
 		return

@@ -4,11 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/ChenGuo505/gowave/config"
-	"github.com/ChenGuo505/gowave/log"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/ChenGuo505/gowave/config"
+	"github.com/ChenGuo505/gowave/log"
 )
 
 type GWDB struct {
@@ -30,13 +31,13 @@ type Session struct {
 }
 
 func Open() (*GWDB, error) {
-	driverName := config.RootConfig.DataSource["driver"].(string)
-	username := config.RootConfig.DataSource["username"].(string)
-	password := config.RootConfig.DataSource["password"].(string)
-	host := config.RootConfig.DataSource["host"].(string)
-	port := config.RootConfig.DataSource["port"].(string)
-	database := config.RootConfig.DataSource["database"].(string)
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", username, password, host, port, database)
+	driverName := config.RootConfig.DataSource.Driver
+	username := config.RootConfig.DataSource.Username
+	password := config.RootConfig.DataSource.Password
+	host := config.RootConfig.DataSource.Host
+	port := config.RootConfig.DataSource.Port
+	database := config.RootConfig.DataSource.Database
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8&parseTime=True&loc=Local", username, password, host, port, database)
 	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
