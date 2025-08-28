@@ -54,6 +54,7 @@ type Settings struct {
 	ReadyToTrip    func(counts *Counter) bool
 	IsSuccess      func(err error) bool
 	OnStatusChange func(name string, from, to Status)
+	Fallback       func(err error) (any, error)
 }
 
 type CircuitBreaker struct {
@@ -64,6 +65,7 @@ type CircuitBreaker struct {
 	readyToTrip    func(counts *Counter) bool
 	isSuccess      func(err error) bool
 	onStatusChange func(name string, from, to Status)
+	fallback       func(err error) (any, error)
 
 	mutex      sync.Mutex
 	status     Status
@@ -95,6 +97,11 @@ func NewCircuitBreaker(settings Settings) *CircuitBreaker {
 			return err == nil
 		}
 	}
+	if settings.Fallback == nil {
+		settings.Fallback = func(err error) (any, error) {
+			return nil, err
+		}
+	}
 	c := &CircuitBreaker{
 		name:           settings.Name,
 		maxRequests:    settings.MaxRequests,
@@ -103,6 +110,7 @@ func NewCircuitBreaker(settings Settings) *CircuitBreaker {
 		readyToTrip:    settings.ReadyToTrip,
 		isSuccess:      settings.IsSuccess,
 		onStatusChange: settings.OnStatusChange,
+		fallback:       settings.Fallback,
 		status:         Closed,
 		counter:        &Counter{},
 	}
@@ -132,6 +140,9 @@ func (c *CircuitBreaker) NewGeneration() {
 func (c *CircuitBreaker) Execute(req func() (any, error)) (any, error) {
 	gen, err := c.beforeRequest()
 	if err != nil {
+		if c.fallback != nil {
+			return c.fallback(err)
+		}
 		return nil, err
 	}
 	resp, err := req()
